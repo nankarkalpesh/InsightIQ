@@ -48,7 +48,7 @@ def test_signup_login_and_me_flow():
     assert signup_res.status_code == 200
     s_data = signup_res.json()
     assert "access_token" in s_data
-    token = s_data["access_token"]
+    signup_token = s_data["access_token"]
     assert s_data["user"]["email"] == email.lower()
     assert s_data["user"]["display_name"] == display_name
 
@@ -67,7 +67,15 @@ def test_signup_login_and_me_flow():
     })
     assert login_res.status_code == 200
     l_data = login_res.json()
-    assert l_data["access_token"] == token
+    assert "access_token" in l_data
+    login_token = l_data["access_token"]
+
+    # Verify both signup and login tokens decode to the same user
+    signup_decoded = decode_access_token(signup_token)
+    login_decoded = decode_access_token(login_token)
+    assert signup_decoded is not None and login_decoded is not None
+    assert signup_decoded["email"] == login_decoded["email"] == email.lower()
+    assert signup_decoded["sub"] == login_decoded["sub"]
 
     # 4. Login wrong password
     bad_login = client.post("/api/auth/login", json={
@@ -76,10 +84,14 @@ def test_signup_login_and_me_flow():
     })
     assert bad_login.status_code == 401
 
-    # 5. GET /api/auth/me authenticated
-    me_res = client.get("/api/auth/me", headers={"Authorization": f"Bearer {token}"})
+    # 5. GET /api/auth/me authenticated (with both tokens)
+    me_res = client.get("/api/auth/me", headers={"Authorization": f"Bearer {signup_token}"})
     assert me_res.status_code == 200
     assert me_res.json()["user"]["email"] == email.lower()
+
+    me_login_res = client.get("/api/auth/me", headers={"Authorization": f"Bearer {login_token}"})
+    assert me_login_res.status_code == 200
+    assert me_login_res.json()["user"]["email"] == email.lower()
 
     # 6. GET /api/auth/me unauthenticated
     unauth_me = client.get("/api/auth/me")

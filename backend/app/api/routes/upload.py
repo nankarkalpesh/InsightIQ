@@ -18,10 +18,28 @@ from app.core.database import get_db
 from app.auth.dependencies import get_optional_user
 from app.models.db_models import User, DatasetModel
 
+import logging
+
+logger = logging.getLogger(__name__)
+
 router = APIRouter(prefix="", tags=["upload"])
 
-UPLOADS_DIR = Path(__file__).resolve().parent.parent.parent.parent / "data" / "uploads"
-UPLOADS_DIR.mkdir(parents=True, exist_ok=True)
+
+def get_uploads_dir() -> Path:
+    """Returns the uploads directory path, creating it lazily if needed.
+    Configurable via UPLOADS_DIR_PATH environment variable."""
+    env_path = os.getenv("UPLOADS_DIR_PATH")
+    if env_path and env_path.strip():
+        uploads_dir = Path(env_path.strip()).resolve()
+    else:
+        uploads_dir = Path(__file__).resolve().parent.parent.parent.parent / "data" / "uploads"
+    
+    try:
+        uploads_dir.mkdir(parents=True, exist_ok=True)
+    except Exception as e:
+        logger.warning(f"Failed to create uploads directory '{uploads_dir}': {e}")
+
+    return uploads_dir
 
 
 def get_file_extension(filename: str) -> str:
@@ -39,10 +57,12 @@ def build_column_metadata(df) -> list[ColumnMetadata]:
 
 
 def find_file_by_id(file_id: str) -> Path:
-    # Look for matching file in UPLOADS_DIR recursively
-    for p in UPLOADS_DIR.rglob("*"):
-        if p.is_file() and p.name.startswith(file_id):
-            return p
+    # Look for matching file in uploads directory recursively
+    uploads_dir = get_uploads_dir()
+    if uploads_dir.exists():
+        for p in uploads_dir.rglob("*"):
+            if p.is_file() and p.name.startswith(file_id):
+                return p
     raise FileNotFoundErrorCustom(f"File reference '{file_id}' not found.")
 
 
@@ -63,8 +83,12 @@ async def upload_file(
     # Generate unique reference ID
     file_id = str(uuid.uuid4())
     user_folder = current_user.id if current_user else "guest"
-    target_dir = UPLOADS_DIR / user_folder
-    target_dir.mkdir(parents=True, exist_ok=True)
+    uploads_dir = get_uploads_dir()
+    target_dir = uploads_dir / user_folder
+    try:
+        target_dir.mkdir(parents=True, exist_ok=True)
+    except Exception as e:
+        logger.warning(f"Failed to create target upload directory '{target_dir}': {e}")
 
     safe_filename = f"{file_id}_{Path(file.filename).name}"
     dest_path = target_dir / safe_filename

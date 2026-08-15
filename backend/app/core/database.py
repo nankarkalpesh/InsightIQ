@@ -1,17 +1,33 @@
 import os
+import logging
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker, declarative_base
 
-BASE_DIR = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-DATA_DIR = os.path.join(BASE_DIR, "data")
-os.makedirs(DATA_DIR, font_exists:=True, exist_ok=True)
+logger = logging.getLogger(__name__)
 
-DB_PATH = os.path.join(DATA_DIR, "insightiq.db")
-DATABASE_URL = f"sqlite:///{DB_PATH}"
+BASE_DIR = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
+DATABASE_URL = os.getenv("DATABASE_URL")
+if not DATABASE_URL:
+    db_path_env = os.getenv("DB_PATH")
+    if db_path_env and db_path_env.strip():
+        DB_PATH = db_path_env.strip()
+    else:
+        DATA_DIR = os.path.join(BASE_DIR, "data")
+        DB_PATH = os.path.join(DATA_DIR, "insightiq.db")
+
+    db_dir = os.path.dirname(os.path.abspath(DB_PATH))
+    if db_dir:
+        try:
+            os.makedirs(db_dir, exist_ok=True)
+        except Exception as e:
+            logger.warning(f"Failed to create database directory '{db_dir}': {e}")
+
+    DATABASE_URL = f"sqlite:///{DB_PATH}"
 
 engine = create_engine(
     DATABASE_URL,
-    connect_args={"check_same_thread": False}
+    connect_args={"check_same_thread": False} if DATABASE_URL.startswith("sqlite") else {}
 )
 
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
