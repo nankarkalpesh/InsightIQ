@@ -31,18 +31,19 @@ export const SettingsWorkspace: React.FC<SettingsWorkspaceProps> = ({ onNavigate
 
   const checkOllamaHealth = async () => {
     setOllamaStatus('checking');
+    const apiBase = import.meta.env.VITE_API_URL || 'http://localhost:8000';
     try {
-      const res = await fetch('http://localhost:8000/api/health');
+      const res = await fetch(`${apiBase}/api/health`);
       if (res.ok) {
         setOllamaStatus('ready');
         setOllamaDetails('Ollama Connected (Model: llama3.2:3b @ http://localhost:11434)');
       } else {
         setOllamaStatus('ready');
-        setOllamaDetails('Backend online @ http://localhost:8000');
+        setOllamaDetails(`Backend online @ ${apiBase}`);
       }
     } catch {
-      setOllamaStatus('ready');
-      setOllamaDetails('Ollama Client active (Default host: http://localhost:11434)');
+      setOllamaStatus('error');
+      setOllamaDetails(`Unable to connect to backend server at ${apiBase}`);
     }
   };
 
@@ -211,6 +212,19 @@ export const SettingsWorkspace: React.FC<SettingsWorkspaceProps> = ({ onNavigate
             {providerError}
           </div>
         )}
+
+        {/* Local Health Status Banner */}
+        <div className="flex items-center gap-2 px-3.5 py-2 rounded-xl bg-surface-soft/60 border border-hairline text-xs">
+          {ollamaStatus === 'ready' ? (
+            <CheckCircle2 className="w-4 h-4 text-emerald-500 shrink-0" />
+          ) : ollamaStatus === 'checking' ? (
+            <RefreshCw className="w-4 h-4 text-primary animate-spin shrink-0" />
+          ) : (
+            <ShieldAlert className="w-4 h-4 text-amber-500 shrink-0" />
+          )}
+          <span className="text-muted font-medium">Engine Status:</span>
+          <span className="text-ink font-mono text-[11px] truncate">{ollamaDetails}</span>
+        </div>
 
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-1">
           {providers.map((p) => {
