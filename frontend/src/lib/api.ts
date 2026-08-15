@@ -266,7 +266,7 @@ export class ApiError extends Error {
   }
 }
 
-const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000';
+export const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000';
 
 function getErrorGuidance(errorCode: string, message: string): string {
   switch (errorCode) {
@@ -355,7 +355,7 @@ export async function uploadFile(file: File, sheetName?: string): Promise<Datase
       throw error;
     }
     throw new ApiError(
-      'Unable to connect to backend server at http://localhost:8000.',
+      `Unable to connect to backend server at ${API_BASE_URL}.`,
       'NETWORK_ERROR',
       'Please ensure the InsightIQ backend service is running and accessible.'
     );
@@ -380,7 +380,7 @@ export async function selectSheet(fileId: string, sheetName: string): Promise<Da
       throw error;
     }
     throw new ApiError(
-      'Unable to connect to backend server at http://localhost:8000.',
+      `Unable to connect to backend server at ${API_BASE_URL}.`,
       'NETWORK_ERROR',
       'Please ensure the InsightIQ backend service is running and accessible.'
     );

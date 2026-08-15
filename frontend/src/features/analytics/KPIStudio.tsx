@@ -9,7 +9,7 @@ import {
   Search
 } from 'lucide-react';
 import { useDataset } from '../../store/datasetStore';
-import { fetchDatasetKPIs, ApiError } from '../../lib/api';
+import { fetchDatasetKPIs, ApiError, API_BASE_URL } from '../../lib/api';
 import type { KPIRecommendationResponse } from '../../lib/api';
 import { KPICard } from './KPICard';
 
@@ -44,7 +44,7 @@ export const KPIStudio: React.FC = () => {
       } else {
         setErrorDetails({
           message: err.message || 'Failed to load KPI recommendations.',
-          guidance: 'Please check your connection to backend server at http://localhost:8000 and try again.',
+          guidance: `Please check your connection to backend server at ${API_BASE_URL} and try again.`,
         });
       }
       setLoading(false);

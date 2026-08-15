@@ -8,7 +8,7 @@ import {
   Search
 } from 'lucide-react';
 import { useDataset } from '../../store/datasetStore';
-import { fetchDatasetCharts, ApiError } from '../../lib/api';
+import { fetchDatasetCharts, ApiError, API_BASE_URL } from '../../lib/api';
 import type { ChartRecommendationResponse } from '../../lib/api';
 import { RenderedChartCard } from './RenderedChartCard';
 
@@ -42,7 +42,7 @@ export const VisualizationStudio: React.FC = () => {
       } else {
         setErrorDetails({
           message: err.message || 'Failed to load chart recommendations.',
-          guidance: 'Please check your connection to backend server at http://localhost:8000 and try again.',
+          guidance: `Please check your connection to backend server at ${API_BASE_URL} and try again.`,
         });
       }
       setLoading(false);

@@ -6,7 +6,7 @@ import {
   RefreshCw
 } from 'lucide-react';
 import { useDataset } from '../../store/datasetStore';
-import { fetchDatasetOverview, ApiError, formatBytes } from '../../lib/api';
+import { fetchDatasetOverview, ApiError, formatBytes, API_BASE_URL } from '../../lib/api';
 import type { DatasetOverviewResponse } from '../../lib/api';
 import { DatasetHealthCard } from './DatasetHealthCard';
 import { SchemaTable } from './SchemaTable';
@@ -42,7 +42,7 @@ export const OverviewScreen: React.FC = () => {
       } else {
         setErrorDetails({
           message: err.message || 'Failed to load dataset overview.',
-          guidance: 'Please check your connection to backend at http://localhost:8000 and try again.'
+          guidance: `Please check your connection to backend at ${API_BASE_URL} and try again.`
         });
       }
       setLoading(false);
