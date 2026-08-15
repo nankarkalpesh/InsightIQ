@@ -1,0 +1,16 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" width="64" height="64" fill="none">
+  <rect width="64" height="64" rx="16" fill="url(#iq_bg_grad)" />
+  <path d="M14 50H50" stroke="#A78BFA" stroke-width="3" stroke-linecap="round" opacity="0.6" />
+  <rect x="17" y="35" width="6" height="15" rx="3" fill="#FFFFFF" opacity="0.85" />
+  <rect x="25" y="28" width="6" height="22" rx="3" fill="#FFFFFF" opacity="0.92" />
+  <rect x="33" y="21" width="6" height="29" rx="3" fill="#FFFFFF" />
+  <circle cx="43" cy="25" r="10" stroke="#FFFFFF" stroke-width="4.5" fill="none" />
+  <path d="M50 32L57 39" stroke="#FFFFFF" stroke-width="5" stroke-linecap="round" />
+  <circle cx="43" cy="25" r="3" fill="#FBBF24" />
+  <defs>
+    <linearGradient id="iq_bg_grad" x1="0" y1="0" x2="64" y2="64" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#6366F1" />
+      <stop offset="1" stop-color="#7C3AED" />
+    </linearGradient>
+  </defs>
+</svg>
