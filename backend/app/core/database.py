@@ -8,7 +8,11 @@ logger = logging.getLogger(__name__)
 BASE_DIR = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 DATABASE_URL = os.getenv("DATABASE_URL")
-if not DATABASE_URL:
+if DATABASE_URL and DATABASE_URL.strip():
+    DATABASE_URL = DATABASE_URL.strip()
+    if DATABASE_URL.startswith("postgres://"):
+        DATABASE_URL = DATABASE_URL.replace("postgres://", "postgresql://", 1)
+else:
     db_path_env = os.getenv("DB_PATH")
     if db_path_env and db_path_env.strip():
         DB_PATH = db_path_env.strip()
@@ -48,19 +52,19 @@ def init_db():
     from app.models import db_models  # noqa
     Base.metadata.create_all(bind=engine)
 
-    # SQLite migration: check if preferred_llm_provider column exists in users table
+    # Database migration: check if preferred_llm_provider / groq_api_key columns exist in users table
     try:
-        with engine.connect() as conn:
-            from sqlalchemy import text
-            result = conn.execute(text("PRAGMA table_info(users);"))
-            columns = [row[1] for row in result.fetchall()]
+        from sqlalchemy import inspect, text
+        inspector = inspect(engine)
+        if inspector.has_table("users"):
+            columns = [col["name"] for col in inspector.get_columns("users")]
             if columns:
-                if "preferred_llm_provider" not in columns:
-                    conn.execute(text("ALTER TABLE users ADD COLUMN preferred_llm_provider VARCHAR(50);"))
-                if "groq_api_key" not in columns:
-                    conn.execute(text("ALTER TABLE users ADD COLUMN groq_api_key VARCHAR(255);"))
-                conn.commit()
+                with engine.begin() as conn:
+                    if "preferred_llm_provider" not in columns:
+                        conn.execute(text("ALTER TABLE users ADD COLUMN preferred_llm_provider VARCHAR(50);"))
+                    if "groq_api_key" not in columns:
+                        conn.execute(text("ALTER TABLE users ADD COLUMN groq_api_key VARCHAR(255);"))
     except Exception as e:
-        import logging
-        logging.getLogger(__name__).warning(f"DB Migration note: {e}")
+        logger.warning(f"DB Migration note: {e}")
+
 
