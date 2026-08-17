@@ -49,6 +49,7 @@ def get_available_providers(groq_api_key: Optional[str] = None) -> List[Dict[str
     effective_groq_key = (groq_api_key or os.getenv("GROQ_API_KEY", "")).strip()
     groq_configured = bool(effective_groq_key)
 
+    active_groq_name = _cached_working_groq_model or os.getenv("GROQ_MODEL", DEFAULT_GROQ_MODEL)
     return [
         {
             "id": "ollama",
@@ -62,7 +63,7 @@ def get_available_providers(groq_api_key: Optional[str] = None) -> List[Dict[str
             "name": "Groq (Cloud)",
             "configured": groq_configured,
             "status": "ready" if groq_configured else "not_configured",
-            "details": f"Groq Cloud API ({DEFAULT_GROQ_MODEL})" if groq_configured else "GROQ_API_KEY environment variable is not set on the server"
+            "details": f"Groq Cloud API ({active_groq_name})" if groq_configured else "GROQ_API_KEY environment variable is not set on the server"
         }
     ]
 
@@ -131,13 +132,40 @@ def _prepare_messages_for_ollama(messages: List[Dict[str, Any]]) -> List[Dict[st
     return out
 
 
+GROQ_MODEL_FALLBACKS = [
+    os.getenv("GROQ_MODEL", "llama-3.3-70b-versatile").strip(),
+    "llama-3.3-70b-versatile",
+    "llama-3.1-70b-versatile",
+    "llama-3.1-8b-instant",
+    "llama3-70b-8192",
+    "llama3-8b-8192",
+    "mixtral-8x7b-32768",
+]
+
+_cached_working_groq_model: Optional[str] = None
+
+
+def get_groq_model_candidates(model_arg: Optional[str] = None) -> List[str]:
+    """Get list of Groq models to attempt in order of preference."""
+    candidates = []
+    if model_arg and model_arg.strip():
+        candidates.append(model_arg.strip())
+    if _cached_working_groq_model and _cached_working_groq_model not in candidates:
+        candidates.append(_cached_working_groq_model)
+    for m in GROQ_MODEL_FALLBACKS:
+        if m and m not in candidates:
+            candidates.append(m)
+    return candidates
+
+
 def chat_groq(
     messages: List[Dict[str, Any]],
     model: Optional[str] = None,
     tools: Optional[List[Dict[str, Any]]] = None,
     groq_api_key: Optional[str] = None
 ) -> Dict[str, Any]:
-    """Execute chat request against Groq Cloud API."""
+    """Execute chat request against Groq Cloud API with automatic model fallback."""
+    global _cached_working_groq_model
     groq_key = (groq_api_key or os.getenv("GROQ_API_KEY", "")).strip()
     if not groq_key:
         return {
@@ -145,70 +173,82 @@ def chat_groq(
             "message": "GROQ_API_KEY environment variable or user API key is not set."
         }
 
-    target_model = model or os.getenv("GROQ_MODEL", DEFAULT_GROQ_MODEL)
     prepared_messages = _prepare_messages_for_groq(messages)
-
     headers = {
         "Authorization": f"Bearer {groq_key}",
         "Content-Type": "application/json"
     }
-    payload: Dict[str, Any] = {
-        "model": target_model,
-        "messages": prepared_messages,
-    }
-    if tools:
-        payload["tools"] = tools
 
-    try:
-        with httpx.Client(timeout=60.0) as client:
-            resp = client.post("https://api.groq.com/openai/v1/chat/completions", json=payload, headers=headers)
-            if resp.status_code != 200:
-                return {
-                    "error": "groq_unavailable",
-                    "message": f"Groq API returned HTTP {resp.status_code}: {resp.text}"
-                }
+    candidates = get_groq_model_candidates(model)
+    last_error_msg = "Unknown error"
 
-            data = resp.json()
-            choices = data.get("choices", [])
-            if not choices:
-                return {
-                    "error": "groq_unavailable",
-                    "message": "Groq returned empty response choices."
-                }
-
-            choice_msg = choices[0].get("message", {})
-            raw_tool_calls = choice_msg.get("tool_calls", [])
-            parsed_tool_calls = []
-
-            if raw_tool_calls:
-                for tc in raw_tool_calls:
-                    fn = tc.get("function", {})
-                    args = fn.get("arguments", {})
-                    if isinstance(args, str):
-                        try:
-                            args = json.loads(args)
-                        except Exception:
-                            args = {}
-                    parsed_tool_calls.append({
-                        "id": tc.get("id") or f"call_{len(parsed_tool_calls)+1}",
-                        "type": tc.get("type", "function"),
-                        "function": {
-                            "name": fn.get("name"),
-                            "arguments": args
-                        }
-                    })
-
-            return {
-                "content": choice_msg.get("content") or "",
-                "tool_calls": parsed_tool_calls,
-                "raw_response": data
-            }
-
-    except Exception as err:
-        return {
-            "error": "groq_unavailable",
-            "message": f"Groq connection error: {str(err)}"
+    for candidate_model in candidates:
+        payload: Dict[str, Any] = {
+            "model": candidate_model,
+            "messages": prepared_messages,
         }
+        if tools:
+            payload["tools"] = tools
+
+        try:
+            with httpx.Client(timeout=60.0) as client:
+                resp = client.post("https://api.groq.com/openai/v1/chat/completions", json=payload, headers=headers)
+                if resp.status_code != 200:
+                    last_error_msg = f"Groq API returned HTTP {resp.status_code}: {resp.text}"
+                    if resp.status_code == 404 or "model_not_found" in resp.text or "does not exist" in resp.text:
+                        logger.warning(f"[GROQ FALLBACK] Model '{candidate_model}' returned 404. Trying fallback model...")
+                        continue
+                    return {
+                        "error": "groq_unavailable",
+                        "message": last_error_msg
+                    }
+
+                data = resp.json()
+                choices = data.get("choices", [])
+                if not choices:
+                    return {
+                        "error": "groq_unavailable",
+                        "message": "Groq returned empty response choices."
+                    }
+
+                _cached_working_groq_model = candidate_model
+                choice_msg = choices[0].get("message", {})
+                raw_tool_calls = choice_msg.get("tool_calls", [])
+                parsed_tool_calls = []
+
+                if raw_tool_calls:
+                    for tc in raw_tool_calls:
+                        fn = tc.get("function", {})
+                        args = fn.get("arguments", {})
+                        if isinstance(args, str):
+                            try:
+                                args = json.loads(args)
+                            except Exception:
+                                args = {}
+                        parsed_tool_calls.append({
+                            "id": tc.get("id") or f"call_{len(parsed_tool_calls)+1}",
+                            "type": tc.get("type", "function"),
+                            "function": {
+                                "name": fn.get("name"),
+                                "arguments": args
+                            }
+                        })
+
+                return {
+                    "content": choice_msg.get("content") or "",
+                    "tool_calls": parsed_tool_calls,
+                    "raw_response": data,
+                    "active_model": candidate_model
+                }
+
+        except Exception as err:
+            last_error_msg = f"Groq connection error: {str(err)}"
+            logger.warning(f"[GROQ FALLBACK] Error connecting with model '{candidate_model}': {err}")
+
+    return {
+        "error": "groq_unavailable",
+        "message": last_error_msg
+    }
 
 
 def chat_stream_groq(
@@ -216,45 +256,59 @@ def chat_stream_groq(
     model: Optional[str] = None,
     groq_api_key: Optional[str] = None
 ) -> Generator[str, None, None]:
-    """Execute streaming chat request against Groq Cloud API."""
+    """Execute streaming chat request against Groq Cloud API with automatic model fallback."""
+    global _cached_working_groq_model
     groq_key = (groq_api_key or os.getenv("GROQ_API_KEY", "")).strip()
     if not groq_key:
         yield " [Error streaming from Groq: GROQ_API_KEY is not configured]"
         return
 
-    target_model = model or os.getenv("GROQ_MODEL", DEFAULT_GROQ_MODEL)
     prepared_messages = _prepare_messages_for_groq(messages)
-
     headers = {
         "Authorization": f"Bearer {groq_key}",
         "Content-Type": "application/json"
     }
-    payload: Dict[str, Any] = {
-        "model": target_model,
-        "messages": prepared_messages,
-        "stream": True
-    }
 
-    try:
-        with httpx.Client(timeout=60.0) as client:
-            with client.stream("POST", "https://api.groq.com/openai/v1/chat/completions", json=payload, headers=headers) as response:
-                if response.status_code != 200:
-                    yield f" [Error streaming from Groq: HTTP {response.status_code}]"
-                    return
-                for line in response.iter_lines():
-                    if line.startswith("data: "):
-                        data_str = line[6:].strip()
-                        if data_str == "[DONE]":
-                            break
-                        try:
-                            chunk_data = json.loads(data_str)
-                            content = chunk_data.get("choices", [{}])[0].get("delta", {}).get("content", "")
-                            if content:
-                                yield content
-                        except Exception:
+    candidates = get_groq_model_candidates(model)
+    stream_started = False
+
+    for candidate_model in candidates:
+        payload: Dict[str, Any] = {
+            "model": candidate_model,
+            "messages": prepared_messages,
+            "stream": True
+        }
+
+        try:
+            with httpx.Client(timeout=60.0) as client:
+                with client.stream("POST", "https://api.groq.com/openai/v1/chat/completions", json=payload, headers=headers) as response:
+                    if response.status_code != 200:
+                        if response.status_code == 404 or "model_not_found" in response.text or "does not exist" in response.text:
+                            logger.warning(f"[GROQ STREAM FALLBACK] Model '{candidate_model}' returned 404. Trying fallback model...")
                             continue
-    except Exception as err:
-        yield f" [Error streaming from Groq: {str(err)}]"
+                        yield f" [Error streaming from Groq: HTTP {response.status_code}]"
+                        return
+
+                    _cached_working_groq_model = candidate_model
+                    stream_started = True
+                    for line in response.iter_lines():
+                        if line.startswith("data: "):
+                            data_str = line[6:].strip()
+                            if data_str == "[DONE]":
+                                break
+                            try:
+                                chunk_data = json.loads(data_str)
+                                content = chunk_data.get("choices", [{}])[0].get("delta", {}).get("content", "")
+                                if content:
+                                    yield content
+                            except Exception:
+                                continue
+                    if stream_started:
+                        return
+        except Exception as err:
+            logger.warning(f"[GROQ STREAM FALLBACK] Error with model '{candidate_model}': {err}")
+
+    yield " [Error streaming from Groq: All configured model fallbacks failed]"
 
 
 def chat_ollama(

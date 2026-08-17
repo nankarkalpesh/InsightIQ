@@ -50,16 +50,21 @@ def get_dataset(
                 if file_id in _dataset_sessions:
                     return _dataset_sessions[file_id]
 
-                if rec.file_path and os.path.exists(rec.file_path):
-                    ext = rec.file_type.lower().lstrip(".")
-                    logger.info(f"[SESSION HYDRATION] Re-loading dataset '{file_id}' from disk path: {rec.file_path}")
-                    df = parse_file(rec.file_path, ext)
+                from app.core.storage import get_dataset_file_bytes, get_local_cache_path
+                ext = rec.file_type.lower().lstrip(".")
+                
+                try:
+                    # Retrieve raw bytes from persistent storage layer (PostgreSQL blob / local cache / S3)
+                    content_bytes = get_dataset_file_bytes(file_id=rec.id, filename=rec.filename, user_id=rec.user_id, db=db_session)
+                    local_cache = get_local_cache_path(rec.id, rec.filename, rec.user_id)
+                    logger.info(f"[SESSION HYDRATION] Auto-hydrating dataset '{file_id}' ({len(content_bytes)} bytes) from persistent storage.")
+                    df = parse_file(local_cache, ext)
                     _dataset_sessions[file_id] = df
                     return df
-                else:
-                    logger.warning(f"[SESSION HYDRATION FAILED] Disk path '{rec.file_path}' does not exist for dataset '{file_id}'.")
+                except Exception as err:
+                    logger.warning(f"[SESSION HYDRATION FAILED] Could not restore dataset '{file_id}': {err}")
                     raise FileNotFoundErrorCustom(
-                        f"Dataset file '{rec.filename}' is missing from server storage. Please re-upload your dataset."
+                        f"Dataset file '{rec.filename}' is no longer available on server storage. Please re-upload your dataset."
                     )
         finally:
             if should_close and db_session:

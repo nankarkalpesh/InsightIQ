@@ -14,6 +14,7 @@ from app.core.exceptions import (
     FileNotFoundErrorCustom
 )
 from app.core.session import store_dataset
+from app.core.storage import save_dataset_file, get_local_cache_path
 from app.core.database import get_db
 from app.auth.dependencies import get_optional_user
 from app.models.db_models import User, DatasetModel
@@ -93,24 +94,43 @@ async def upload_file(
     safe_filename = f"{file_id}_{Path(file.filename).name}"
     dest_path = target_dir / safe_filename
 
-    # Save uploaded file
+    # Read uploaded file bytes
     try:
-        with open(dest_path, "wb") as buffer:
-            shutil.copyfileobj(file.file, buffer)
+        file_bytes = await file.read()
     finally:
         await file.close()
 
-    file_size = os.path.getsize(dest_path)
+    file_size = len(file_bytes)
     if file_size == 0:
-        if dest_path.exists():
-            dest_path.unlink()
         raise EmptyFileError("Uploaded file is empty (0 bytes).")
+
+    # Save to unified persistent storage abstraction (PostgreSQL Blob + Local Cache + Optional S3)
+    user_id = current_user.id if current_user else None
+    storage_ref = save_dataset_file(
+        file_id=file_id,
+        filename=file.filename,
+        content_bytes=file_bytes,
+        user_id=user_id,
+        db=db
+    )
+    dest_path = get_local_cache_path(file_id, file.filename, user_id)
 
     # Excel file handling
     if ext in ("xlsx", "xls"):
         sheet_names = get_excel_sheet_names(dest_path)
         
         if len(sheet_names) > 1 and sheet_name is None:
+            # Save preliminary record
+            ds_rec = DatasetModel(
+                id=file_id,
+                user_id=user_id,
+                filename=file.filename,
+                file_type=f".{ext}",
+                file_path=storage_ref
+            )
+            db.add(ds_rec)
+            db.commit()
+
             return DatasetMetadataResponse(
                 file_id=file_id,
                 filename=file.filename,
@@ -127,12 +147,12 @@ async def upload_file(
         # Save DB model record
         ds_rec = DatasetModel(
             id=file_id,
-            user_id=current_user.id if current_user else None,
+            user_id=user_id,
             filename=file.filename,
             file_type=f".{ext}",
             row_count=len(df),
             column_count=len(df.columns),
-            file_path=str(dest_path)
+            file_path=storage_ref
         )
         db.add(ds_rec)
         db.commit()
@@ -157,12 +177,12 @@ async def upload_file(
     # Save DB model record
     ds_rec = DatasetModel(
         id=file_id,
-        user_id=current_user.id if current_user else None,
+        user_id=user_id,
         filename=file.filename,
         file_type=f".{ext}",
         row_count=len(df),
         column_count=len(df.columns),
-        file_path=str(dest_path)
+        file_path=storage_ref
     )
     db.add(ds_rec)
     db.commit()

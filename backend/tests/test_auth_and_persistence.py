@@ -264,3 +264,46 @@ def test_resumed_dataset_chat_after_session_eviction():
     assert user_b_chat.status_code in [403, 404]
 
 
+def test_persistent_storage_blob_hydration_and_groq_fallback():
+    import os
+    from app.core.session import remove_dataset, _dataset_sessions
+    from app.core.storage import get_local_cache_path
+    from app.ai.ollama_client import get_groq_model_candidates, chat_groq
+
+    unique_id = uuid.uuid4().hex[:8]
+    email = f"blob_user_{unique_id}@example.com"
+    password = "PassWord123!"
+    s_res = client.post("/api/auth/signup", json={"email": email, "password": password})
+    assert s_res.status_code == 200
+    token = s_res.json()["access_token"]
+    user_id = s_res.json()["user"]["id"]
+    headers = {"Authorization": f"Bearer {token}"}
+
+    csv_data = "incident_id,crime_category,victims_count\nINC001,Theft,2\nINC002,Burglary,1\nINC003,Fraud,4\n"
+    files = {"file": ("test_blob_persistence.csv", io.BytesIO(csv_data.encode("utf-8")), "text/csv")}
+
+    upload_res = client.post("/api/upload", files=files, headers=headers)
+    assert upload_res.status_code == 201
+    file_id = upload_res.json()["file_id"]
+
+    # 1. Simulate Render filesystem wipe (clear in-memory cache AND delete local file on disk)
+    remove_dataset(file_id)
+    assert file_id not in _dataset_sessions
+    local_disk_file = get_local_cache_path(file_id, "test_blob_persistence.csv", user_id)
+    if os.path.exists(local_disk_file):
+        os.remove(local_disk_file)
+    assert os.path.exists(local_disk_file) is False
+
+    # 2. Call overview after disk wipe -> Auto-hydrates 100% from PostgreSQL Blob table!
+    overview_res = client.get(f"/api/dataset/{file_id}/overview", headers=headers)
+    assert overview_res.status_code == 200
+    o_data = overview_res.json()
+    assert o_data["health"]["total_rows"] == 3
+    assert o_data["health"]["total_columns"] == 3
+
+    # 3. Verify Groq model candidates fallback chain
+    candidates = get_groq_model_candidates("llama-3.3-70b-versatile")
+    assert len(candidates) >= 3
+    assert "llama-3.1-8b-instant" in candidates or "llama3-70b-8192" in candidates
+
+

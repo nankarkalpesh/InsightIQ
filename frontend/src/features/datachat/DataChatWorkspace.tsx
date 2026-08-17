@@ -96,13 +96,17 @@ const InlineMarkdownTable: React.FC<{ text: string }> = ({ text }) => {
 export const DataChatWorkspace: React.FC<DataChatWorkspaceProps> = ({ onNavigateToUpload }) => {
   const { dataset } = useDataset();
   const { addItem, isInDashboard } = useDashboard();
-  const { activeProvider } = useLLMProvider();
+  const { activeProvider, providers } = useLLMProvider();
   const { user } = useAuth();
   
   const fileId = dataset?.file_id;
   const userId = user?.id;
 
-  const providerBadgeText = activeProvider === 'groq' ? 'Groq Ready' : 'Ollama Ready';
+  const currentProviderObj = providers.find((p) => p.id === activeProvider);
+  const isAvailable = currentProviderObj?.status === 'ready' || currentProviderObj?.configured;
+  const providerBadgeText = activeProvider === 'groq'
+    ? (isAvailable ? 'Groq Configured' : 'Groq Unavailable')
+    : 'Ollama Ready';
   const providerDisplayName = activeProvider === 'groq' ? 'Groq Cloud' : 'Ollama';
 
   const getChatStorageKey = (fid?: string, uId?: string) =>

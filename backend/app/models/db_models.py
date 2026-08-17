@@ -1,6 +1,6 @@
 import uuid
 from datetime import datetime
-from sqlalchemy import Column, String, Integer, Text, DateTime, ForeignKey
+from sqlalchemy import Column, String, Integer, Text, DateTime, ForeignKey, LargeBinary
 from sqlalchemy.orm import relationship
 from app.core.database import Base
 
@@ -32,9 +32,20 @@ class DatasetModel(Base):
     uploaded_at = Column(DateTime, default=datetime.utcnow)
 
     owner = relationship("User", back_populates="datasets")
+    blob = relationship("DatasetFileBlobModel", back_populates="dataset", uselist=False, cascade="all, delete-orphan")
     dashboards = relationship("DashboardConfigModel", back_populates="dataset", cascade="all, delete-orphan")
     training_runs = relationship("TrainingRunModel", back_populates="dataset", cascade="all, delete-orphan")
     conversations = relationship("ChatConversationModel", back_populates="dataset", cascade="all, delete-orphan")
+
+
+class DatasetFileBlobModel(Base):
+    __tablename__ = "dataset_file_blobs"
+
+    file_id = Column(String(36), ForeignKey("datasets.id", ondelete="CASCADE"), primary_key=True)
+    content = Column(LargeBinary, nullable=False)
+    created_at = Column(DateTime, default=datetime.utcnow)
+
+    dataset = relationship("DatasetModel", back_populates="blob")
 
 
 class DashboardConfigModel(Base):
