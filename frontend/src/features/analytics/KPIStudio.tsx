@@ -9,12 +9,16 @@ import {
   Search
 } from 'lucide-react';
 import { useDataset } from '../../store/datasetStore';
-import { fetchDatasetKPIs, ApiError, API_BASE_URL } from '../../lib/api';
+import { fetchDatasetKPIs, ApiError } from '../../lib/api';
 import type { KPIRecommendationResponse } from '../../lib/api';
 import { KPICard } from './KPICard';
 
-export const KPIStudio: React.FC = () => {
-  const { dataset, clearDataset } = useDataset();
+export interface KPIStudioProps {
+  onNavigateToUpload?: () => void;
+}
+
+export const KPIStudio: React.FC<KPIStudioProps> = ({ onNavigateToUpload }) => {
+  const { dataset } = useDataset();
   const [kpiResponse, setKpiResponse] = useState<KPIRecommendationResponse | null>(null);
   const [loading, setLoading] = useState<boolean>(true);
   const [errorDetails, setErrorDetails] = useState<{
@@ -25,7 +29,10 @@ export const KPIStudio: React.FC = () => {
   const [toastMessage, setToastMessage] = useState<string | null>(null);
 
   const loadKPIs = async () => {
-    if (!dataset?.file_id) return;
+    if (!dataset?.file_id) {
+      setLoading(false);
+      return;
+    }
 
     setLoading(true);
     setErrorDetails(null);
@@ -33,9 +40,8 @@ export const KPIStudio: React.FC = () => {
     try {
       const data = await fetchDatasetKPIs(dataset.file_id);
       setKpiResponse(data);
-      setLoading(false);
     } catch (err: any) {
-      console.error('Failed to load KPIs:', err);
+      console.error('Failed to fetch dataset KPIs:', err);
       if (err instanceof ApiError) {
         setErrorDetails({
           message: err.message,
@@ -43,20 +49,17 @@ export const KPIStudio: React.FC = () => {
         });
       } else {
         setErrorDetails({
-          message: err.message || 'Failed to load KPI recommendations.',
-          guidance: `Please check your connection to backend server at ${API_BASE_URL} and try again.`,
+          message: 'An error occurred while connecting to backend analytics.',
+          guidance: 'Ensure the backend server is running and try again.',
         });
       }
+    } finally {
       setLoading(false);
     }
   };
 
   useEffect(() => {
-    if (dataset?.file_id) {
-      loadKPIs();
-    } else {
-      setLoading(false);
-    }
+    loadKPIs();
   }, [dataset?.file_id]);
 
   const handleAddToDashboard = (kpiName: string) => {
@@ -70,11 +73,13 @@ export const KPIStudio: React.FC = () => {
     if (!searchQuery.trim()) return kpiResponse.kpis;
 
     const query = searchQuery.toLowerCase().trim();
-    return kpiResponse.kpis.filter((kpi) =>
-      kpi.kpi_name.toLowerCase().includes(query) ||
-      kpi.definition.toLowerCase().includes(query) ||
-      kpi.dax.toLowerCase().includes(query) ||
-      kpi.required_columns.some((c) => c.toLowerCase().includes(query))
+    return kpiResponse.kpis.filter(
+      (kpi) =>
+        kpi.kpi_name.toLowerCase().includes(query) ||
+        kpi.reason.toLowerCase().includes(query) ||
+        kpi.definition.toLowerCase().includes(query) ||
+        kpi.dax.toLowerCase().includes(query) ||
+        kpi.required_columns.some((c) => c.toLowerCase().includes(query))
     );
   }, [kpiResponse, searchQuery]);
 
@@ -93,8 +98,8 @@ export const KPIStudio: React.FC = () => {
         </div>
         <div className="pt-2">
           <button
-            onClick={clearDataset}
-            className="btn-primary gap-2"
+            onClick={onNavigateToUpload}
+            className="btn-primary gap-2 cursor-pointer"
           >
             <Plus className="w-4 h-4" />
             <span>Upload a Dataset</span>

@@ -7,7 +7,11 @@ import { useDashboard } from '../../store/dashboardStore';
 
 type AnalyticsSubTab = 'KPIs' | 'Visualizations' | 'Dashboard';
 
-const AnalyticsWorkspaceContent: React.FC = () => {
+export interface AnalyticsWorkspaceProps {
+  onNavigateToUpload?: () => void;
+}
+
+const AnalyticsWorkspaceContent: React.FC<AnalyticsWorkspaceProps> = ({ onNavigateToUpload }) => {
   const [activeTab, setActiveTabState] = useState<AnalyticsSubTab>(() => {
     try {
       const saved = localStorage.getItem('insightiq_analytics_subtab');
@@ -76,13 +80,15 @@ const AnalyticsWorkspaceContent: React.FC = () => {
       </div>
 
       {/* Render Active Sub-Tab View */}
-      {activeTab === 'KPIs' && <KPIStudio />}
-      {activeTab === 'Visualizations' && <VisualizationStudio />}
-      {activeTab === 'Dashboard' && <DashboardBuilder onNavigateTab={(tab) => setActiveTab(tab)} />}
+      {activeTab === 'KPIs' && <KPIStudio onNavigateToUpload={onNavigateToUpload} />}
+      {activeTab === 'Visualizations' && <VisualizationStudio onNavigateToUpload={onNavigateToUpload} />}
+      {activeTab === 'Dashboard' && (
+        <DashboardBuilder onNavigateTab={(tab) => setActiveTab(tab)} onNavigateToUpload={onNavigateToUpload} />
+      )}
     </div>
   );
 };
 
-export const AnalyticsWorkspace: React.FC = () => {
-  return <AnalyticsWorkspaceContent />;
+export const AnalyticsWorkspace: React.FC<AnalyticsWorkspaceProps> = ({ onNavigateToUpload }) => {
+  return <AnalyticsWorkspaceContent onNavigateToUpload={onNavigateToUpload} />;
 };

@@ -129,7 +129,8 @@ export const DSProvider: React.FC<{ children: React.ReactNode }> = ({ children }
     if (user && target) {
       const featureList = Array.from(feats);
       const modelName = model?.model_name || (tResult as any)?.model_name || 'selected';
-      saveDSStateApi(fileId, target, featureList, modelName, tResult?.metrics || {}).catch((err) => {
+      const runMetrics = (tResult as any)?.metrics || (tResult as any)?.evaluation_metrics || {};
+      saveDSStateApi(fileId, target, featureList, modelName, runMetrics).catch((err) => {
         console.warn('Failed to save DS state to backend:', err);
       });
     }
@@ -152,7 +153,15 @@ export const DSProvider: React.FC<{ children: React.ReactNode }> = ({ children }
     setFeatureSelectionsState(featMap);
     const modelObj = modelName ? ({ model_name: modelName, display_name: modelName } as any) : null;
     setSelectedModelState(modelObj);
-    saveState(target, null, true, featsSet, featMap, modelObj, null);
+    saveState(
+      target,
+      null,
+      true,
+      featsSet,
+      featMap,
+      modelObj,
+      metrics ? ({ metrics } as any) : null
+    );
   };
 
   const setTarget = (column: string, candidate: TargetCandidate | null = null) => {

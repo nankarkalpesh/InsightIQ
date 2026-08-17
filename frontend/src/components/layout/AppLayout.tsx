@@ -96,7 +96,7 @@ export const AppLayout: React.FC<AppLayoutProps> = ({ children }) => {
     }
 
     if (activeNav === 'Analytics') {
-      return <AnalyticsWorkspace />;
+      return <AnalyticsWorkspace onNavigateToUpload={() => setActiveNav('Overview')} />;
     }
 
     if (activeNav === 'Data Science') {

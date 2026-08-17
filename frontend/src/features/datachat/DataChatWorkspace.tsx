@@ -21,6 +21,7 @@ import {
 import { useDataset } from '../../store/datasetStore';
 import { useDashboard } from '../../store/dashboardStore';
 import { useLLMProvider } from '../../store/llmStore';
+import { useAuth } from '../../store/authStore';
 import { sendChatMessage, ApiError, type SuggestedAction, type RecommendedChart } from '../../lib/api';
 import ReactMarkdown from 'react-markdown';
 import { RenderedChartCard } from '../analytics/RenderedChartCard';
@@ -39,8 +40,6 @@ interface SavedChatSession {
   conversation_id?: string;
   messages: ChatMessage[];
 }
-
-const CHAT_STORAGE_KEY_PREFIX = 'insightiq_chat_';
 
 const SUGGESTED_PROMPTS = [
   'Summarize this dataset and report its quality health score.',

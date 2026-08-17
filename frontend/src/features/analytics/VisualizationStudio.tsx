@@ -12,8 +12,12 @@ import { fetchDatasetCharts, ApiError, API_BASE_URL } from '../../lib/api';
 import type { ChartRecommendationResponse } from '../../lib/api';
 import { RenderedChartCard } from './RenderedChartCard';
 
-export const VisualizationStudio: React.FC = () => {
-  const { dataset, clearDataset } = useDataset();
+export interface VisualizationStudioProps {
+  onNavigateToUpload?: () => void;
+}
+
+export const VisualizationStudio: React.FC<VisualizationStudioProps> = ({ onNavigateToUpload }) => {
+  const { dataset } = useDataset();
   const [chartResponse, setChartResponse] = useState<ChartRecommendationResponse | null>(null);
   const [loading, setLoading] = useState<boolean>(true);
   const [errorDetails, setErrorDetails] = useState<{
@@ -31,9 +35,8 @@ export const VisualizationStudio: React.FC = () => {
     try {
       const data = await fetchDatasetCharts(dataset.file_id);
       setChartResponse(data);
-      setLoading(false);
     } catch (err: any) {
-      console.error('Failed to load chart recommendations:', err);
+      console.error('Failed to load charts:', err);
       if (err instanceof ApiError) {
         setErrorDetails({
           message: err.message,
@@ -45,6 +48,7 @@ export const VisualizationStudio: React.FC = () => {
           guidance: `Please check your connection to backend server at ${API_BASE_URL} and try again.`,
         });
       }
+    } finally {
       setLoading(false);
     }
   };
@@ -85,7 +89,7 @@ export const VisualizationStudio: React.FC = () => {
           </p>
         </div>
         <div className="pt-2">
-          <button onClick={clearDataset} className="btn-primary gap-2">
+          <button onClick={onNavigateToUpload} className="btn-primary gap-2 cursor-pointer">
             <Plus className="w-4 h-4" />
             <span>Upload a Dataset</span>
           </button>
