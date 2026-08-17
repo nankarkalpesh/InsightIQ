@@ -828,6 +828,37 @@ export async function resumeUserDatasetApi(datasetId: string): Promise<ResumeDat
   return await handleResponse<ResumeDatasetResponse>(response);
 }
 
+export async function saveDashboardConfigApi(datasetId: string, items: any[]): Promise<{ status: string; message: string }> {
+  const headers = getAuthHeaders({ 'Content-Type': 'application/json' });
+  const response = await fetch(`${API_BASE_URL}/api/user/datasets/${datasetId}/dashboard`, {
+    method: 'POST',
+    headers,
+    body: JSON.stringify({ items })
+  });
+  return await handleResponse<{ status: string; message: string }>(response);
+}
+
+export async function saveDSStateApi(
+  datasetId: string,
+  targetColumn: string,
+  features: string[],
+  modelName: string,
+  metrics?: Record<string, any>
+): Promise<{ status: string; run_id: string; message: string }> {
+  const headers = getAuthHeaders({ 'Content-Type': 'application/json' });
+  const response = await fetch(`${API_BASE_URL}/api/user/datasets/${datasetId}/ds-state`, {
+    method: 'POST',
+    headers,
+    body: JSON.stringify({
+      target_column: targetColumn,
+      features,
+      model_name: modelName,
+      metrics: metrics || {}
+    })
+  });
+  return await handleResponse<{ status: string; run_id: string; message: string }>(response);
+}
+
 export interface LLMProviderItem {
   id: string;
   name: string;

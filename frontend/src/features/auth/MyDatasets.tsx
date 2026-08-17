@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { Database, Calendar, Layers, ArrowRight, Loader2, RefreshCw, AlertCircle, FileSpreadsheet, PlusCircle } from 'lucide-react';
 import { useDataset } from '../../store/datasetStore';
+import { useAuth } from '../../store/authStore';
 import { getUserDatasetsApi, resumeUserDatasetApi, type UserDatasetItem, type DatasetMetadataResponse } from '../../lib/api';
 
 interface MyDatasetsProps {
@@ -13,6 +14,7 @@ export const MyDatasets: React.FC<MyDatasetsProps> = ({
   onNavigateToUpload
 }) => {
   const { setDataset } = useDataset();
+  const { user } = useAuth();
   const [datasets, setDatasets] = useState<UserDatasetItem[]>([]);
   const [isLoading, setIsLoading] = useState<boolean>(true);
   const [resumingFileId, setResumingFileId] = useState<string | null>(null);
@@ -42,17 +44,65 @@ export const MyDatasets: React.FC<MyDatasetsProps> = ({
 
     try {
       const res = await resumeUserDatasetApi(datasetItem.file_id);
-      
-      // Save dashboard items if available
+      const userId = user?.id;
+      const fid = datasetItem.file_id;
+
+      // 1. Save dashboard items if available
       if (res.dashboard_config && Array.isArray(res.dashboard_config)) {
         try {
-          localStorage.setItem(`insightiq_dashboard_${datasetItem.file_id}`, JSON.stringify(res.dashboard_config));
+          const dashKey = userId ? `insightiq_u_${userId}_dashboard_${fid}` : `insightiq_guest_dashboard_${fid}`;
+          localStorage.setItem(dashKey, JSON.stringify(res.dashboard_config));
         } catch (e) {
           console.warn('Could not save resumed dashboard config:', e);
         }
       }
 
-      // Reconstruct DatasetMetadataResponse for datasetStore
+      // 2. Save training run / DS selections if available
+      if (res.training_runs && res.training_runs.length > 0) {
+        try {
+          const latestRun = res.training_runs[0];
+          const dsKey = userId ? `insightiq_u_${userId}_ds_store_${fid}` : `insightiq_guest_ds_store_${fid}`;
+          const dsPayload = {
+            selectedTarget: latestRun.target_column,
+            selectedTargetCandidate: null,
+            isCustomTarget: true,
+            selectedFeatures: latestRun.features || [],
+            featureSelections: (latestRun.features || []).reduce((acc: any, f: string) => {
+              acc[f] = true;
+              return acc;
+            }, {}),
+            selectedModel: latestRun.model_name
+              ? { model_name: latestRun.model_name, display_name: latestRun.model_name }
+              : null,
+            trainingResult: latestRun.metrics ? { metrics: latestRun.metrics, model_name: latestRun.model_name } : null
+          };
+          localStorage.setItem(dsKey, JSON.stringify(dsPayload));
+        } catch (e) {
+          console.warn('Could not save resumed DS state:', e);
+        }
+      }
+
+      // 3. Save chat history if available
+      if (res.chat_history && res.chat_history.length > 0) {
+        try {
+          const chatKey = userId ? `insightiq_u_${userId}_chat_session_${fid}` : `insightiq_guest_chat_session_${fid}`;
+          const formattedMessages = res.chat_history.map((msg: any, idx: number) => ({
+            id: `resumed-${idx}-${Date.now()}`,
+            sender: msg.role === 'user' ? 'user' : 'assistant',
+            text: msg.content || '',
+            timestamp: 'Saved'
+          }));
+          const chatSessionData = {
+            conversation_id: `resumed_${fid}`,
+            messages: formattedMessages
+          };
+          localStorage.setItem(chatKey, JSON.stringify(chatSessionData));
+        } catch (e) {
+          console.warn('Could not save resumed chat history:', e);
+        }
+      }
+
+      // 4. Reconstruct DatasetMetadataResponse for datasetStore
       const meta: DatasetMetadataResponse = {
         file_id: res.dataset.file_id,
         filename: datasetItem.filename,

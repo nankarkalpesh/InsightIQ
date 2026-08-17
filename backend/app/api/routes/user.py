@@ -129,3 +129,85 @@ def resume_user_dataset(
         "training_runs": training_runs,
         "chat_history": chat_history
     }
+
+
+from pydantic import BaseModel, Field
+
+
+class DashboardSaveRequest(BaseModel):
+    items: List[Dict[str, Any]] = Field(default_factory=list)
+
+
+class DSStateSaveRequest(BaseModel):
+    target_column: str
+    features: List[str] = Field(default_factory=list)
+    model_name: str
+    metrics: Dict[str, Any] = Field(default_factory=dict)
+
+
+@router.post("/datasets/{dataset_id}/dashboard")
+def save_user_dashboard(
+    dataset_id: str,
+    payload: DashboardSaveRequest,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    rec = db.query(DatasetModel).filter(
+        DatasetModel.id == dataset_id,
+        DatasetModel.user_id == current_user.id
+    ).first()
+    if not rec:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Dataset '{dataset_id}' not found or access denied."
+        )
+
+    dash_rec = db.query(DashboardConfigModel).filter(
+        DashboardConfigModel.dataset_id == dataset_id
+    ).first()
+
+    config_str = json.dumps(payload.items)
+    if not dash_rec:
+        dash_rec = DashboardConfigModel(
+            user_id=current_user.id,
+            dataset_id=dataset_id,
+            config_json=config_str
+        )
+        db.add(dash_rec)
+    else:
+        dash_rec.config_json = config_str
+        dash_rec.user_id = current_user.id
+
+    db.commit()
+    return {"status": "ok", "message": "Dashboard configuration saved."}
+
+
+@router.post("/datasets/{dataset_id}/ds-state")
+def save_user_ds_state(
+    dataset_id: str,
+    payload: DSStateSaveRequest,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    rec = db.query(DatasetModel).filter(
+        DatasetModel.id == dataset_id,
+        DatasetModel.user_id == current_user.id
+    ).first()
+    if not rec:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Dataset '{dataset_id}' not found or access denied."
+        )
+
+    run_rec = TrainingRunModel(
+        user_id=current_user.id,
+        dataset_id=dataset_id,
+        target_column=payload.target_column,
+        features_json=json.dumps(payload.features),
+        model_name=payload.model_name,
+        metrics_json=json.dumps(payload.metrics or {})
+    )
+    db.add(run_rec)
+    db.commit()
+    return {"status": "ok", "run_id": run_rec.id, "message": "Data Science state saved."}
+

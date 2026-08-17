@@ -1,9 +1,14 @@
 import math
-from typing import Any, Dict, List
-from fastapi import APIRouter, HTTPException, Query, status
+import json
+from typing import Any, Dict, List, Optional
+from fastapi import APIRouter, HTTPException, Query, status, Depends
 import numpy as np
 import pandas as pd
+from sqlalchemy.orm import Session
 
+from app.core.database import get_db
+from app.auth.dependencies import get_optional_user
+from app.models.db_models import User, TrainingRunModel
 from app.core.session import get_dataset
 from app.analytics.profiling import (
     dataset_health,
@@ -247,7 +252,9 @@ async def get_dataset_model_recommendations(
 @router.post("/{file_id}/train", response_model=ModelTrainingResponse)
 async def train_dataset_model(
     file_id: str,
-    payload: ModelTrainingRequest
+    payload: ModelTrainingRequest,
+    current_user: Optional[User] = Depends(get_optional_user),
+    db: Session = Depends(get_db)
 ):
     df = get_dataset(file_id)
     try:
@@ -258,6 +265,23 @@ async def train_dataset_model(
             feature_cols=payload.features,
             model_name=payload.model_name
         )
+
+        if db:
+            try:
+                run_rec = TrainingRunModel(
+                    id=result.get("training_run_id"),
+                    user_id=current_user.id if current_user else None,
+                    dataset_id=file_id,
+                    target_column=payload.target,
+                    features_json=json.dumps(payload.features),
+                    model_name=payload.model_name,
+                    metrics_json=json.dumps(result.get("metrics", {}))
+                )
+                db.add(run_rec)
+                db.commit()
+            except Exception as db_err:
+                db.rollback()
+                # Log or swallow non-fatal DB commit error to keep model training working
     except ValueError as err:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,

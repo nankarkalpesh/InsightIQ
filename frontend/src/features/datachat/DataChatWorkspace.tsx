@@ -94,17 +94,25 @@ export const DataChatWorkspace: React.FC = () => {
   const { dataset } = useDataset();
   const { addItem, isInDashboard } = useDashboard();
   const { activeProvider } = useLLMProvider();
+  const { user } = useAuth();
+  
   const fileId = dataset?.file_id;
+  const userId = user?.id;
 
   const providerBadgeText = activeProvider === 'groq' ? 'Groq Ready' : 'Ollama Ready';
   const providerDisplayName = activeProvider === 'groq' ? 'Groq Cloud' : 'Ollama';
 
-  const getChatStorageKey = (fid?: string) => `${CHAT_STORAGE_KEY_PREFIX}${fid || 'default'}`;
+  const getChatStorageKey = (fid?: string, uId?: string) =>
+    uId
+      ? `insightiq_u_${uId}_chat_session_${fid || 'default'}`
+      : `insightiq_guest_chat_session_${fid || 'default'}`;
+
+  const storageKey = getChatStorageKey(fileId, userId);
 
   const [messages, setMessages] = useState<ChatMessage[]>(() => {
     if (!fileId) return [];
     try {
-      const saved = localStorage.getItem(getChatStorageKey(fileId));
+      const saved = localStorage.getItem(storageKey);
       if (saved) {
         const parsed: SavedChatSession = JSON.parse(saved);
         return parsed.messages || [];
@@ -119,7 +127,7 @@ export const DataChatWorkspace: React.FC = () => {
   const [conversationId, setConversationId] = useState<string | undefined>(() => {
     if (!fileId) return undefined;
     try {
-      const saved = localStorage.getItem(getChatStorageKey(fileId));
+      const saved = localStorage.getItem(storageKey);
       if (saved) {
         const parsed: SavedChatSession = JSON.parse(saved);
         return parsed.conversation_id;
@@ -137,7 +145,19 @@ export const DataChatWorkspace: React.FC = () => {
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
 
-  // Sync state when fileId changes
+  // Reset on logout
+  useEffect(() => {
+    const handleLogout = () => {
+      setMessages([]);
+      setConversationId(undefined);
+    };
+    window.addEventListener('insightiq_logout', handleLogout);
+    return () => {
+      window.removeEventListener('insightiq_logout', handleLogout);
+    };
+  }, []);
+
+  // Sync state when fileId or storageKey changes
   useEffect(() => {
     if (!fileId) {
       setMessages([]);
@@ -145,7 +165,7 @@ export const DataChatWorkspace: React.FC = () => {
       return;
     }
     try {
-      const saved = localStorage.getItem(getChatStorageKey(fileId));
+      const saved = localStorage.getItem(storageKey);
       if (saved) {
         const parsed: SavedChatSession = JSON.parse(saved);
         setMessages(parsed.messages || []);
@@ -158,7 +178,7 @@ export const DataChatWorkspace: React.FC = () => {
       setMessages([]);
       setConversationId(undefined);
     }
-  }, [fileId]);
+  }, [fileId, storageKey]);
 
   // Persist messages & conversationId to localStorage whenever they change
   useEffect(() => {
@@ -168,11 +188,11 @@ export const DataChatWorkspace: React.FC = () => {
         conversation_id: conversationId,
         messages,
       };
-      localStorage.setItem(getChatStorageKey(fileId), JSON.stringify(sessionData));
+      localStorage.setItem(storageKey, JSON.stringify(sessionData));
     } catch (e) {
       console.error('Failed to save chat session to localStorage:', e);
     }
-  }, [fileId, conversationId, messages]);
+  }, [fileId, storageKey, conversationId, messages]);
 
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });

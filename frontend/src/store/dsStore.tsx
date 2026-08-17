@@ -1,6 +1,7 @@
 import React, { createContext, useContext, useState, useEffect } from 'react';
-import type { TargetCandidate, ModelRecommendation, ModelTrainingResponse } from '../lib/api';
+import { saveDSStateApi, type TargetCandidate, type ModelRecommendation, type ModelTrainingResponse } from '../lib/api';
 import { useDataset } from './datasetStore';
+import { useAuth } from './authStore';
 
 interface DSContextType {
   fileId: string | null;
@@ -19,15 +20,23 @@ interface DSContextType {
   setModel: (model: ModelRecommendation | null) => void;
   setTrainingResult: (result: ModelTrainingResponse | null) => void;
   resetDSStore: () => void;
+  hydrateDSState: (target: string | null, features: string[], modelName: string | null, metrics?: Record<string, any>) => void;
 }
 
 const DSContext = createContext<DSContextType | undefined>(undefined);
 
-const STORAGE_KEY_PREFIX = 'insightiq_ds_store_';
-
 export const DSProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const { dataset } = useDataset();
+  const { user } = useAuth();
   const fileId = dataset ? dataset.file_id : null;
+  const userId = user?.id;
+
+  const getStorageKey = (fid?: string | null, uId?: string) =>
+    uId
+      ? `insightiq_u_${uId}_ds_store_${fid || 'default'}`
+      : `insightiq_guest_ds_store_${fid || 'default'}`;
+
+  const storageKey = getStorageKey(fileId, userId);
 
   const [selectedTarget, setSelectedTargetState] = useState<string | null>(null);
   const [selectedTargetCandidate, setSelectedTargetCandidateState] = useState<TargetCandidate | null>(null);
@@ -37,7 +46,24 @@ export const DSProvider: React.FC<{ children: React.ReactNode }> = ({ children }
   const [selectedModel, setSelectedModelState] = useState<ModelRecommendation | null>(null);
   const [trainingResult, setTrainingResultState] = useState<ModelTrainingResponse | null>(null);
 
-  // Sync / restore state when fileId changes
+  // Reset state on logout
+  useEffect(() => {
+    const handleLogout = () => {
+      setSelectedTargetState(null);
+      setSelectedTargetCandidateState(null);
+      setIsCustomTargetState(false);
+      setSelectedFeaturesState(new Set());
+      setFeatureSelectionsState({});
+      setSelectedModelState(null);
+      setTrainingResultState(null);
+    };
+    window.addEventListener('insightiq_logout', handleLogout);
+    return () => {
+      window.removeEventListener('insightiq_logout', handleLogout);
+    };
+  }, []);
+
+  // Sync / restore state when fileId or storageKey changes
   useEffect(() => {
     if (!fileId) {
       setSelectedTargetState(null);
@@ -51,7 +77,7 @@ export const DSProvider: React.FC<{ children: React.ReactNode }> = ({ children }
     }
 
     try {
-      const savedRaw = localStorage.getItem(`${STORAGE_KEY_PREFIX}${fileId}`);
+      const savedRaw = localStorage.getItem(storageKey);
       if (savedRaw) {
         const parsed = JSON.parse(savedRaw);
         if (parsed.selectedTarget) {
@@ -72,7 +98,7 @@ export const DSProvider: React.FC<{ children: React.ReactNode }> = ({ children }
     } catch (err) {
       console.error('Failed to restore DS state from localStorage:', err);
     }
-  }, [fileId]);
+  }, [fileId, storageKey]);
 
   // Save to localStorage whenever state changes
   const saveState = (
@@ -95,10 +121,38 @@ export const DSProvider: React.FC<{ children: React.ReactNode }> = ({ children }
         selectedModel: model,
         trainingResult: tResult,
       };
-      localStorage.setItem(`${STORAGE_KEY_PREFIX}${fileId}`, JSON.stringify(payload));
+      localStorage.setItem(storageKey, JSON.stringify(payload));
     } catch (err) {
       console.error('Failed to save DS state to localStorage:', err);
     }
+
+    if (user && target) {
+      const featureList = Array.from(feats);
+      const modelName = model?.model_name || (tResult as any)?.model_name || 'selected';
+      saveDSStateApi(fileId, target, featureList, modelName, tResult?.metrics || {}).catch((err) => {
+        console.warn('Failed to save DS state to backend:', err);
+      });
+    }
+  };
+
+  const hydrateDSState = (
+    target: string | null,
+    features: string[],
+    modelName: string | null,
+    metrics?: Record<string, any>
+  ) => {
+    const featsSet = new Set<string>(features || []);
+    const featMap: Record<string, boolean> = {};
+    (features || []).forEach((f) => {
+      featMap[f] = true;
+    });
+    setSelectedTargetState(target);
+    setIsCustomTargetState(true);
+    setSelectedFeaturesState(featsSet);
+    setFeatureSelectionsState(featMap);
+    const modelObj = modelName ? ({ model_name: modelName, display_name: modelName } as any) : null;
+    setSelectedModelState(modelObj);
+    saveState(target, null, true, featsSet, featMap, modelObj, null);
   };
 
   const setTarget = (column: string, candidate: TargetCandidate | null = null) => {
@@ -188,7 +242,7 @@ export const DSProvider: React.FC<{ children: React.ReactNode }> = ({ children }
     setSelectedModelState(null);
     setTrainingResultState(null);
     if (fileId) {
-      localStorage.removeItem(`${STORAGE_KEY_PREFIX}${fileId}`);
+      localStorage.removeItem(storageKey);
     }
   };
 
@@ -211,6 +265,7 @@ export const DSProvider: React.FC<{ children: React.ReactNode }> = ({ children }
         setModel,
         setTrainingResult,
         resetDSStore,
+        hydrateDSState,
       }}
     >
       {children}

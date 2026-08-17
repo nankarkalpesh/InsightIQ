@@ -1,7 +1,9 @@
 import React, { createContext, useContext, useState, useEffect } from 'react';
 import { fetchDatasetOverview, type DatasetMetadataResponse } from '../lib/api';
+import { useAuth } from './authStore';
 
-const SESSION_STORAGE_KEY = 'insightiq_dataset_session';
+const getDatasetSessionKey = (userId?: string) =>
+  userId ? `insightiq_u_${userId}_dataset_session` : 'insightiq_guest_dataset_session';
 
 export interface DatasetContextType {
   dataset: DatasetMetadataResponse | null;
@@ -14,26 +16,48 @@ export interface DatasetContextType {
 export const DatasetContext = createContext<DatasetContextType | undefined>(undefined);
 
 export const DatasetProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
+  const { user } = useAuth();
+  const userId = user?.id;
+  const sessionKey = getDatasetSessionKey(userId);
+
   const [dataset, setDatasetState] = useState<DatasetMetadataResponse | null>(null);
   const [isRestoringSession, setIsRestoringSession] = useState<boolean>(true);
   const [sessionError, setSessionError] = useState<string | null>(null);
 
-  // Restore session on app load
+  // Reset state on logout
+  useEffect(() => {
+    const handleLogout = () => {
+      setDatasetState(null);
+      setSessionError(null);
+    };
+    window.addEventListener('insightiq_logout', handleLogout);
+    return () => {
+      window.removeEventListener('insightiq_logout', handleLogout);
+    };
+  }, []);
+
+  // Restore session on app load or user change
   useEffect(() => {
     let isMounted = true;
 
     const restoreSession = async () => {
       try {
-        const savedSessionStr = localStorage.getItem(SESSION_STORAGE_KEY);
+        const savedSessionStr = localStorage.getItem(sessionKey);
         if (!savedSessionStr) {
-          if (isMounted) setIsRestoringSession(false);
+          if (isMounted) {
+            setDatasetState(null);
+            setIsRestoringSession(false);
+          }
           return;
         }
 
         const savedData: DatasetMetadataResponse = JSON.parse(savedSessionStr);
         if (!savedData || !savedData.file_id) {
-          localStorage.removeItem(SESSION_STORAGE_KEY);
-          if (isMounted) setIsRestoringSession(false);
+          localStorage.removeItem(sessionKey);
+          if (isMounted) {
+            setDatasetState(null);
+            setIsRestoringSession(false);
+          }
           return;
         }
 
@@ -46,7 +70,7 @@ export const DatasetProvider: React.FC<{ children: React.ReactNode }> = ({ child
         }
       } catch (err) {
         console.warn('Backend session expired or unreachable:', err);
-        localStorage.removeItem(SESSION_STORAGE_KEY);
+        localStorage.removeItem(sessionKey);
         if (isMounted) {
           setDatasetState(null);
           setSessionError('Your previous session expired or the server restarted. Please re-upload your dataset.');
@@ -60,26 +84,26 @@ export const DatasetProvider: React.FC<{ children: React.ReactNode }> = ({ child
     return () => {
       isMounted = false;
     };
-  }, []);
+  }, [sessionKey]);
 
   const setDataset = (newDataset: DatasetMetadataResponse | null) => {
     setDatasetState(newDataset);
     setSessionError(null);
     if (newDataset) {
       try {
-        localStorage.setItem(SESSION_STORAGE_KEY, JSON.stringify(newDataset));
+        localStorage.setItem(sessionKey, JSON.stringify(newDataset));
       } catch (e) {
         console.error('Failed to save dataset session to localStorage:', e);
       }
     } else {
-      localStorage.removeItem(SESSION_STORAGE_KEY);
+      localStorage.removeItem(sessionKey);
     }
   };
 
   const clearDataset = () => {
     setDatasetState(null);
     setSessionError(null);
-    localStorage.removeItem(SESSION_STORAGE_KEY);
+    localStorage.removeItem(sessionKey);
   };
 
   return (

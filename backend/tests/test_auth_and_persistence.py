@@ -152,3 +152,58 @@ def test_anonymous_upload_works_without_regression():
     assert "file_id" in up_data
     assert up_data["filename"] == "test_guest.csv"
     assert up_data["row_count"] == 2
+
+
+def test_dashboard_and_ds_state_persistence_and_resume():
+    unique_id = uuid.uuid4().hex[:8]
+    email = f"state_user_{unique_id}@example.com"
+    password = "PassWord123!"
+    s_res = client.post("/api/auth/signup", json={"email": email, "password": password})
+    assert s_res.status_code == 200
+    token = s_res.json()["access_token"]
+    headers = {"Authorization": f"Bearer {token}"}
+
+    csv_data = "target_col,feature1,feature2\n1,10,20\n0,15,25\n1,12,22\n0,14,24\n1,11,21\n0,13,23\n1,10,20\n0,15,25\n1,12,22\n0,14,24\n"
+    files = {"file": ("test_state.csv", io.BytesIO(csv_data.encode("utf-8")), "text/csv")}
+
+    upload_res = client.post("/api/upload", files=files, headers=headers)
+    assert upload_res.status_code == 201
+    file_id = upload_res.json()["file_id"]
+
+    # 1. Save Dashboard config
+    dash_items = [{"id": "kpi_test", "type": "kpi", "kpiData": {"kpi_name": "Test KPI"}}]
+    save_dash_res = client.post(f"/api/user/datasets/{file_id}/dashboard", json={"items": dash_items}, headers=headers)
+    assert save_dash_res.status_code == 200
+
+    # 2. Save DS State
+    ds_payload = {
+        "target_column": "target_col",
+        "features": ["feature1", "feature2"],
+        "model_name": "Random Forest Classifier",
+        "metrics": {"accuracy": 0.95}
+    }
+    save_ds_res = client.post(f"/api/user/datasets/{file_id}/ds-state", json=ds_payload, headers=headers)
+    assert save_ds_res.status_code == 200
+
+    # 3. Save Chat message
+    chat_res = client.post(
+        f"/api/dataset/{file_id}/chat",
+        json={"message": "Hello dataset chat!"},
+        headers=headers
+    )
+    assert chat_res.status_code == 200
+
+    # 4. Resume dataset and check full associated state restoration
+    resume_res = client.get(f"/api/user/datasets/{file_id}/resume", headers=headers)
+    assert resume_res.status_code == 200
+    r_data = resume_res.json()
+
+    assert r_data["dataset"]["file_id"] == file_id
+    assert r_data["dashboard_config"] == dash_items
+    assert len(r_data["training_runs"]) >= 1
+    latest_run = r_data["training_runs"][0]
+    assert latest_run["target_column"] == "target_col"
+    assert latest_run["features"] == ["feature1", "feature2"]
+    assert latest_run["model_name"] == "Random Forest Classifier"
+    assert len(r_data["chat_history"]) >= 2
+

@@ -90,10 +90,18 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     setUser(null);
     setToken(null);
     try {
-      localStorage.removeItem(TOKEN_KEY);
+      const keysToRemove: string[] = [];
+      for (let i = 0; i < localStorage.length; i++) {
+        const key = localStorage.key(i);
+        if (key && key.startsWith('insightiq_')) {
+          keysToRemove.push(key);
+        }
+      }
+      keysToRemove.forEach((k) => localStorage.removeItem(k));
     } catch (e) {
-      console.error('Failed to remove token from localStorage:', e);
+      console.error('Failed to remove session keys from localStorage:', e);
     }
+    window.dispatchEvent(new Event('insightiq_logout'));
   };
 
   return (
