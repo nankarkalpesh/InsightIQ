@@ -252,6 +252,8 @@ def test_resumed_dataset_chat_after_session_eviction():
     c_data = chat_res.json()
     assert "response_text" in c_data and len(c_data["response_text"]) > 0
     assert "not found or expired" not in c_data["response_text"].lower()
+    assert c_data["response_text"].strip() != "Analysis complete."
+    assert "total revenue" in c_data["response_text"].lower() or "dataset" in c_data["response_text"].lower() or len(c_data["response_text"]) > 20
 
     # 3. Security Data Isolation: User B trying to access User A's file_id -> denied with 404 / 403
     user_b_chat = client.post(

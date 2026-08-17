@@ -364,6 +364,18 @@ async def chat_with_dataset(
                 if act:
                     turn_suggested_action = act
                 turn_messages.append({
+                    "role": "assistant",
+                    "content": None,
+                    "tool_calls": [{
+                        "id": "call_inferred_1",
+                        "type": "function",
+                        "function": {
+                            "name": inf_name,
+                            "arguments": "{}"
+                        }
+                    }]
+                })
+                turn_messages.append({
                     "role": "tool",
                     "tool_call_id": "call_inferred_1",
                     "content": json.dumps(inf_res),

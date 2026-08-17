@@ -684,7 +684,8 @@ export async function sendChatMessage(
       }),
     });
 
-    if (!useStream) {
+    const contentType = response.headers.get('content-type') || '';
+    if (!useStream || contentType.includes('application/json')) {
       return await handleResponse<ChatResponse>(response);
     }
 
