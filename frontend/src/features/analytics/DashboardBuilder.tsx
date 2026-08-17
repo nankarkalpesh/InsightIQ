@@ -6,7 +6,6 @@ import {
   Gauge,
   LayoutDashboard,
   Loader2,
-  Plus,
   Sparkles,
   Trash2,
   X
@@ -16,6 +15,8 @@ import { useDashboard } from '../../store/dashboardStore';
 import { fetchDatasetKPIs, fetchDatasetCharts } from '../../lib/api';
 import { KPICard } from './KPICard';
 import { RenderedChartCard } from './RenderedChartCard';
+
+import { DatasetEmptyState } from '../../components/common/DatasetEmptyState';
 
 interface DashboardBuilderProps {
   onNavigateTab?: (tab: 'KPIs' | 'Visualizations') => void;
@@ -45,23 +46,14 @@ export const DashboardBuilder: React.FC<DashboardBuilderProps> = ({ onNavigateTa
 
   if (!dataset) {
     return (
-      <div className="w-full max-w-4xl mx-auto flex flex-col items-center justify-center min-h-[65vh] text-center p-8 rounded-2xl border border-dashed border-hairline bg-surface-soft/40 space-y-4">
-        <div className="w-16 h-16 rounded-2xl bg-primary-light text-primary flex items-center justify-center text-3xl font-bold shadow-xs">
-          <LayoutDashboard className="w-8 h-8" />
-        </div>
-        <div className="space-y-1">
-          <h2 className="text-title-lg text-ink font-bold">No Dataset Loaded</h2>
-          <p className="text-body-md text-muted max-w-md mx-auto leading-relaxed">
-            Upload a dataset to build custom executive dashboards combining key metric cards and interactive charts.
-          </p>
-        </div>
-        <div className="pt-2">
-          <button onClick={onNavigateToUpload} className="btn-primary gap-2 cursor-pointer">
-            <Plus className="w-4 h-4" />
-            <span>Upload a Dataset</span>
-          </button>
-        </div>
-      </div>
+      <DatasetEmptyState
+        badgeText="Dashboard Builder"
+        icon={LayoutDashboard}
+        title="No Dataset Loaded"
+        description="Upload a dataset to build custom executive dashboards combining key metric cards and interactive charts."
+        features={['Custom Widget Layout', 'Automated Composition', 'Real-Time Sync']}
+        onNavigateToUpload={onNavigateToUpload}
+      />
     );
   }
 

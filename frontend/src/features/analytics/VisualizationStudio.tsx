@@ -3,7 +3,6 @@ import {
   AlertTriangle,
   BarChart3,
   Loader2,
-  Plus,
   RefreshCw,
   Search
 } from 'lucide-react';
@@ -11,6 +10,8 @@ import { useDataset } from '../../store/datasetStore';
 import { fetchDatasetCharts, ApiError, API_BASE_URL } from '../../lib/api';
 import type { ChartRecommendationResponse } from '../../lib/api';
 import { RenderedChartCard } from './RenderedChartCard';
+
+import { DatasetEmptyState } from '../../components/common/DatasetEmptyState';
 
 export interface VisualizationStudioProps {
   onNavigateToUpload?: () => void;
@@ -78,23 +79,14 @@ export const VisualizationStudio: React.FC<VisualizationStudioProps> = ({ onNavi
 
   if (!dataset) {
     return (
-      <div className="w-full max-w-4xl mx-auto flex flex-col items-center justify-center min-h-[65vh] text-center p-8 rounded-2xl border border-dashed border-hairline bg-surface-soft/40 space-y-4">
-        <div className="w-16 h-16 rounded-2xl bg-primary-light text-primary flex items-center justify-center text-3xl font-bold shadow-xs">
-          <BarChart3 className="w-8 h-8" />
-        </div>
-        <div className="space-y-1">
-          <h2 className="text-title-lg text-ink font-bold">No Dataset Loaded</h2>
-          <p className="text-body-md text-muted max-w-md mx-auto leading-relaxed">
-            Upload a dataset to generate automated interactive chart visualizations tailored to your data.
-          </p>
-        </div>
-        <div className="pt-2">
-          <button onClick={onNavigateToUpload} className="btn-primary gap-2 cursor-pointer">
-            <Plus className="w-4 h-4" />
-            <span>Upload a Dataset</span>
-          </button>
-        </div>
-      </div>
+      <DatasetEmptyState
+        badgeText="Visualization Studio"
+        icon={BarChart3}
+        title="No Dataset Loaded"
+        description="Upload a dataset to generate automated interactive chart visualizations and graphical insights tailored to your data."
+        features={['Automated Chart Engine', 'Interactive Visualizations', 'Multi-Type Plotting']}
+        onNavigateToUpload={onNavigateToUpload}
+      />
     );
   }
 

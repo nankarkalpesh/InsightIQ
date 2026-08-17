@@ -1,6 +1,5 @@
 import React, { useState, useRef, useEffect } from 'react';
 import {
-  MessageSquareCode,
   Send,
   Sparkles,
   Bot,
@@ -26,6 +25,7 @@ import { sendChatMessage, ApiError, type SuggestedAction, type RecommendedChart 
 import ReactMarkdown from 'react-markdown';
 import { RenderedChartCard } from '../analytics/RenderedChartCard';
 import { BrandLogo } from '../../components/icons/BrandLogo';
+import { DatasetEmptyState } from '../../components/common/DatasetEmptyState';
 
 interface ChatMessage {
   id: string;
@@ -39,6 +39,10 @@ interface ChatMessage {
 interface SavedChatSession {
   conversation_id?: string;
   messages: ChatMessage[];
+}
+
+export interface DataChatWorkspaceProps {
+  onNavigateToUpload?: () => void;
 }
 
 const SUGGESTED_PROMPTS = [
@@ -89,7 +93,7 @@ const InlineMarkdownTable: React.FC<{ text: string }> = ({ text }) => {
   );
 };
 
-export const DataChatWorkspace: React.FC = () => {
+export const DataChatWorkspace: React.FC<DataChatWorkspaceProps> = ({ onNavigateToUpload }) => {
   const { dataset } = useDataset();
   const { addItem, isInDashboard } = useDashboard();
   const { activeProvider } = useLLMProvider();
@@ -304,10 +308,10 @@ export const DataChatWorkspace: React.FC = () => {
   const handleClearChat = () => {
     setMessages([]);
     setConversationId(undefined);
-    setError(null);
     if (fileId) {
+      const storageKey = getChatStorageKey(fileId, userId);
       try {
-        localStorage.removeItem(getChatStorageKey(fileId));
+        localStorage.removeItem(storageKey);
       } catch (e) {
         console.error('Failed to clear chat session from localStorage:', e);
       }
@@ -320,15 +324,14 @@ export const DataChatWorkspace: React.FC = () => {
 
   if (!dataset) {
     return (
-      <div className="w-full max-w-4xl mx-auto flex flex-col items-center justify-center min-h-[65vh] text-center p-8 rounded-2xl border border-dashed border-hairline bg-surface-card shadow-xs">
-        <div className="w-16 h-16 rounded-2xl bg-primary/10 border border-primary/20 flex items-center justify-center text-primary mb-4 shadow-xs">
-          <MessageSquareCode className="w-8 h-8" />
-        </div>
-        <h2 className="text-display-sm text-ink mb-2">No Dataset Loaded</h2>
-        <p className="text-body-md text-muted max-w-[480px] mb-6">
-          Upload a dataset in the Overview tab to enable AI-powered natural language analysis and tool invocation.
-        </p>
-      </div>
+      <DatasetEmptyState
+        badgeText="AI Assistant"
+        icon={Sparkles}
+        title="No Dataset Loaded"
+        description="Upload a dataset to start asking AI-powered natural language questions and generating automated data insights."
+        features={['Natural Language Queries', 'Automated Tool Router', 'Instant Data Insights']}
+        onNavigateToUpload={onNavigateToUpload}
+      />
     );
   }
 

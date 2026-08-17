@@ -6,6 +6,8 @@ import { ModelSelector } from './ModelSelector';
 import { ModelTrainer } from './ModelTrainer';
 import { PredictionPlayground } from './PredictionPlayground';
 import { DSProvider, useDSStore } from '../../store/dsStore';
+import { useDataset } from '../../store/datasetStore';
+import { DatasetEmptyState } from '../../components/common/DatasetEmptyState';
 
 type DSSubTab = 'Target' | 'Features' | 'Models' | 'Evaluation' | 'Playground';
 
@@ -186,7 +188,26 @@ const DataScienceWorkspaceContent: React.FC = () => {
   );
 };
 
-export const DataScienceWorkspace: React.FC = () => {
+export interface DataScienceWorkspaceProps {
+  onNavigateToUpload?: () => void;
+}
+
+export const DataScienceWorkspace: React.FC<DataScienceWorkspaceProps> = ({ onNavigateToUpload }) => {
+  const { dataset } = useDataset();
+
+  if (!dataset) {
+    return (
+      <DatasetEmptyState
+        badgeText="Data Science Engine"
+        icon={Brain}
+        title="No Dataset Loaded"
+        description="Upload a dataset to perform feature analysis, target selection, automated ML model training, and interactive prediction playgrounds."
+        features={['Target & Feature Selection', 'AutoML Model Training', 'Prediction Playground']}
+        onNavigateToUpload={onNavigateToUpload}
+      />
+    );
+  }
+
   return (
     <DSProvider>
       <DataScienceWorkspaceContent />

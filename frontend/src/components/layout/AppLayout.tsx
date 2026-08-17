@@ -100,17 +100,11 @@ export const AppLayout: React.FC<AppLayoutProps> = ({ children }) => {
     }
 
     if (activeNav === 'Data Science') {
-      if (!dataset) {
-        return <UploadScreen />;
-      }
-      return <DataScienceWorkspace />;
+      return <DataScienceWorkspace onNavigateToUpload={() => setActiveNav('Overview')} />;
     }
 
     if (activeNav === 'Data Chat') {
-      if (!dataset) {
-        return <UploadScreen />;
-      }
-      return <DataChatWorkspace />;
+      return <DataChatWorkspace onNavigateToUpload={() => setActiveNav('Overview')} />;
     }
 
     if (activeNav === 'Settings') {
