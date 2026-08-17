@@ -264,11 +264,13 @@ def test_resumed_dataset_chat_after_session_eviction():
     assert user_b_chat.status_code in [403, 404]
 
 
-def test_persistent_storage_blob_hydration_and_groq_fallback():
+def test_persistent_storage_blob_hydration_and_groq_fallback(monkeypatch):
     import os
     from app.core.session import remove_dataset, _dataset_sessions
     from app.core.storage import get_local_cache_path
     from app.ai.ollama_client import get_groq_model_candidates, chat_groq
+
+    monkeypatch.delenv("GROQ_MODEL", raising=False)
 
     unique_id = uuid.uuid4().hex[:8]
     email = f"blob_user_{unique_id}@example.com"
@@ -301,9 +303,149 @@ def test_persistent_storage_blob_hydration_and_groq_fallback():
     assert o_data["health"]["total_rows"] == 3
     assert o_data["health"]["total_columns"] == 3
 
-    # 3. Verify Groq model candidates fallback chain
-    candidates = get_groq_model_candidates("llama-3.3-70b-versatile")
-    assert len(candidates) >= 3
-    assert "llama-3.1-8b-instant" in candidates or "llama3-70b-8192" in candidates
+    # 3. Verify Groq model candidates fallback chain contains only supported production models
+    import app.ai.ollama_client as oc
+    oc._cached_working_groq_model = None
+    candidates = get_groq_model_candidates("openai/gpt-oss-120b")
+    assert len(candidates) >= 2
+    assert "openai/gpt-oss-120b" in candidates
+    assert "openai/gpt-oss-20b" in candidates
+    for deprecated in ["llama-3.3-70b-versatile", "llama-3.1-8b-instant", "llama3-70b-8192", "mixtral-8x7b-32768"]:
+        assert deprecated not in candidates
+
+
+def test_access_token_expiration_and_refresh_success():
+    from datetime import timedelta
+    unique_id = uuid.uuid4().hex[:8]
+    email = f"ref_user_{unique_id}@example.com"
+    password = "PassWord123!"
+
+    # 1. Signup user
+    s_res = client.post("/api/auth/signup", json={"email": email, "password": password})
+    assert s_res.status_code == 200
+    s_data = s_res.json()
+    user_id = s_data["user"]["id"]
+    refresh_token = s_data["refresh_token"]
+
+    # 2. Simulate expired access token
+    expired_token = create_access_token({"sub": user_id, "email": email}, expires_delta=timedelta(seconds=-10))
+
+    # Calling /me with expired token fails with 401
+    me_expired = client.get("/api/auth/me", headers={"Authorization": f"Bearer {expired_token}"})
+    assert me_expired.status_code == 401
+
+    # 3. Refresh token exchange succeeds
+    ref_res = client.post("/api/auth/refresh", json={"refresh_token": refresh_token})
+    assert ref_res.status_code == 200
+    ref_data = ref_res.json()
+    assert "access_token" in ref_data
+    assert "refresh_token" in ref_data
+    new_access_token = ref_data["access_token"]
+
+    # 4. Use new access token -> successfully authenticated!
+    me_new = client.get("/api/auth/me", headers={"Authorization": f"Bearer {new_access_token}"})
+    assert me_new.status_code == 200
+    assert me_new.json()["user"]["email"] == email.lower()
+
+
+def test_refresh_token_expired_or_revoked_forces_logout():
+    unique_id = uuid.uuid4().hex[:8]
+    email = f"revoke_user_{unique_id}@example.com"
+    password = "PassWord123!"
+
+    s_res = client.post("/api/auth/signup", json={"email": email, "password": password})
+    assert s_res.status_code == 200
+    refresh_token = s_res.json()["refresh_token"]
+
+    # 1. Logout user (revokes refresh token)
+    logout_res = client.post("/api/auth/logout", json={"refresh_token": refresh_token})
+    assert logout_res.status_code == 200
+
+    # 2. Refresh with revoked token fails with 401
+    ref_revoked = client.post("/api/auth/refresh", json={"refresh_token": refresh_token})
+    assert ref_revoked.status_code == 401
+
+    # 3. Refresh with completely bogus token fails with 401
+    ref_bogus = client.post("/api/auth/refresh", json={"refresh_token": "bogus_fake_token_12345"})
+    assert ref_bogus.status_code == 401
+
+
+def test_render_restart_preserves_auth_and_tokens():
+    from app.core.session import clear_all_sessions
+    unique_id = uuid.uuid4().hex[:8]
+    email = f"restart_user_{unique_id}@example.com"
+    password = "PassWord123!"
+
+    s_res = client.post("/api/auth/signup", json={"email": email, "password": password})
+    assert s_res.status_code == 200
+    refresh_token = s_res.json()["refresh_token"]
+
+    # Clear Python in-memory session (simulates server process restart / Render worker recycle)
+    clear_all_sessions()
+
+    # User refresh token remains valid in PostgreSQL / SQLite DB
+    ref_res = client.post("/api/auth/refresh", json={"refresh_token": refresh_token})
+    assert ref_res.status_code == 200
+    assert "access_token" in ref_res.json()
+
+
+def test_session_eviction_does_not_destroy_persistent_data():
+    from app.core.session import clear_all_sessions
+    unique_id = uuid.uuid4().hex[:8]
+    email = f"evict_data_user_{unique_id}@example.com"
+    password = "PassWord123!"
+
+    s_res = client.post("/api/auth/signup", json={"email": email, "password": password})
+    token = s_res.json()["access_token"]
+    headers = {"Authorization": f"Bearer {token}"}
+
+    csv_data = "a,b,c\n1,2,3\n4,5,6\n"
+    files = {"file": ("test_evict_data.csv", io.BytesIO(csv_data.encode("utf-8")), "text/csv")}
+
+    upload_res = client.post("/api/upload", files=files, headers=headers)
+    assert upload_res.status_code == 201
+    file_id = upload_res.json()["file_id"]
+
+    # Save dashboard config
+    dash_items = [{"id": "kpi_1", "type": "kpi"}]
+    client.post(f"/api/user/datasets/{file_id}/dashboard", json={"items": dash_items}, headers=headers)
+
+    # Evict in-memory sessions
+    clear_all_sessions()
+
+    # Resume dataset -> all DB records (dataset, dashboard, training runs) remain fully intact!
+    resume_res = client.get(f"/api/user/datasets/{file_id}/resume", headers=headers)
+    assert resume_res.status_code == 200
+    r_data = resume_res.json()
+    assert r_data["dataset"]["file_id"] == file_id
+    assert r_data["dashboard_config"] == dash_items
+
+
+def test_resumed_dataset_usable_after_token_refresh():
+    unique_id = uuid.uuid4().hex[:8]
+    email = f"resume_refresh_{unique_id}@example.com"
+    password = "PassWord123!"
+
+    s_res = client.post("/api/auth/signup", json={"email": email, "password": password})
+    token_1 = s_res.json()["access_token"]
+    refresh_token = s_res.json()["refresh_token"]
+
+    csv_data = "val1,val2\n10,20\n30,40\n"
+    files = {"file": ("test_usable.csv", io.BytesIO(csv_data.encode("utf-8")), "text/csv")}
+
+    upload_res = client.post("/api/upload", files=files, headers={"Authorization": f"Bearer {token_1}"})
+    assert upload_res.status_code == 201
+    file_id = upload_res.json()["file_id"]
+
+    # Refresh token to get new access token
+    ref_res = client.post("/api/auth/refresh", json={"refresh_token": refresh_token})
+    assert ref_res.status_code == 200
+    token_2 = ref_res.json()["access_token"]
+
+    # Resumed dataset using refreshed access token works 100%
+    preview_res = client.get(f"/api/dataset/{file_id}/preview", headers={"Authorization": f"Bearer {token_2}"})
+    assert preview_res.status_code == 200
+    assert preview_res.json()["total_rows"] == 2
+
 
 

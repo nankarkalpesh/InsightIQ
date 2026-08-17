@@ -70,7 +70,7 @@ def resume_user_dataset(
         else:
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
-                detail=f"Dataset file missing from server storage path '{rec.file_path}'."
+                detail="Dataset file is no longer available on server storage. Please re-upload your dataset."
             )
 
     health = dataset_health(df)

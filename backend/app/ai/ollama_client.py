@@ -17,7 +17,7 @@ except ImportError:
 
 DEFAULT_OLLAMA_MODEL = os.getenv("OLLAMA_MODEL", "llama3.2:3b")
 DEFAULT_OLLAMA_HOST = os.getenv("OLLAMA_HOST", "http://localhost:11434")
-DEFAULT_GROQ_MODEL = os.getenv("GROQ_MODEL", "llama-3.3-70b-versatile")
+DEFAULT_GROQ_MODEL = os.getenv("GROQ_MODEL", "openai/gpt-oss-120b")
 
 SYSTEM_PROMPT = (
     "IDENTITY & TONE:\n"
@@ -133,13 +133,8 @@ def _prepare_messages_for_ollama(messages: List[Dict[str, Any]]) -> List[Dict[st
 
 
 GROQ_MODEL_FALLBACKS = [
-    os.getenv("GROQ_MODEL", "llama-3.3-70b-versatile").strip(),
-    "llama-3.3-70b-versatile",
-    "llama-3.1-70b-versatile",
-    "llama-3.1-8b-instant",
-    "llama3-70b-8192",
-    "llama3-8b-8192",
-    "mixtral-8x7b-32768",
+    "openai/gpt-oss-120b",
+    "openai/gpt-oss-20b",
 ]
 
 _cached_working_groq_model: Optional[str] = None
@@ -147,9 +142,12 @@ _cached_working_groq_model: Optional[str] = None
 
 def get_groq_model_candidates(model_arg: Optional[str] = None) -> List[str]:
     """Get list of Groq models to attempt in order of preference."""
+    env_default = os.getenv("GROQ_MODEL", "openai/gpt-oss-120b").strip()
     candidates = []
     if model_arg and model_arg.strip():
         candidates.append(model_arg.strip())
+    if env_default and env_default not in candidates:
+        candidates.append(env_default)
     if _cached_working_groq_model and _cached_working_groq_model not in candidates:
         candidates.append(_cached_working_groq_model)
     for m in GROQ_MODEL_FALLBACKS:
@@ -195,8 +193,13 @@ def chat_groq(
                 resp = client.post("https://api.groq.com/openai/v1/chat/completions", json=payload, headers=headers)
                 if resp.status_code != 200:
                     last_error_msg = f"Groq API returned HTTP {resp.status_code}: {resp.text}"
-                    if resp.status_code == 404 or "model_not_found" in resp.text or "does not exist" in resp.text:
-                        logger.warning(f"[GROQ FALLBACK] Model '{candidate_model}' returned 404. Trying fallback model...")
+                    if (
+                        resp.status_code in (404, 429) or
+                        "model_not_found" in resp.text or
+                        "does not exist" in resp.text or
+                        "decommissioned" in resp.text
+                    ):
+                        logger.warning(f"[GROQ FALLBACK] Model '{candidate_model}' returned {resp.status_code}. Trying fallback model...")
                         continue
                     return {
                         "error": "groq_unavailable",
@@ -283,8 +286,13 @@ def chat_stream_groq(
             with httpx.Client(timeout=60.0) as client:
                 with client.stream("POST", "https://api.groq.com/openai/v1/chat/completions", json=payload, headers=headers) as response:
                     if response.status_code != 200:
-                        if response.status_code == 404 or "model_not_found" in response.text or "does not exist" in response.text:
-                            logger.warning(f"[GROQ STREAM FALLBACK] Model '{candidate_model}' returned 404. Trying fallback model...")
+                        if (
+                            response.status_code in (404, 429) or
+                            "model_not_found" in response.text or
+                            "does not exist" in response.text or
+                            "decommissioned" in response.text
+                        ):
+                            logger.warning(f"[GROQ STREAM FALLBACK] Model '{candidate_model}' returned {response.status_code}. Trying fallback model...")
                             continue
                         yield f" [Error streaming from Groq: HTTP {response.status_code}]"
                         return

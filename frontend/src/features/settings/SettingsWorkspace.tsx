@@ -53,9 +53,16 @@ export const SettingsWorkspace: React.FC<SettingsWorkspaceProps> = ({ onNavigate
 
   const handleClearSessionConfirmed = () => {
     try {
-      localStorage.clear();
+      const keysToRemove: string[] = [];
+      for (let i = 0; i < localStorage.length; i++) {
+        const key = localStorage.key(i);
+        if (key && key.includes('_dataset_session')) {
+          keysToRemove.push(key);
+        }
+      }
+      keysToRemove.forEach((k) => localStorage.removeItem(k));
     } catch (e) {
-      console.error('Failed to clear localStorage:', e);
+      console.error('Failed to clear dataset session keys from localStorage:', e);
     }
     clearDataset();
     setShowClearConfirm(false);
@@ -63,6 +70,7 @@ export const SettingsWorkspace: React.FC<SettingsWorkspaceProps> = ({ onNavigate
       onNavigateToNav('Overview');
     }
   };
+
 
   return (
     <div className="w-full max-w-4xl mx-auto space-y-6 pb-12 animate-in fade-in duration-200">

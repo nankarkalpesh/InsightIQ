@@ -315,10 +315,13 @@ async function handleResponse<T>(response: Response): Promise<T> {
   return response.json();
 }
 
+export const TOKEN_KEY = 'insightiq_auth_token';
+export const REFRESH_TOKEN_KEY = 'insightiq_refresh_token';
+
 export function getAuthHeaders(customHeaders: Record<string, string> = {}): Record<string, string> {
   const headers: Record<string, string> = { ...customHeaders };
   try {
-    const token = localStorage.getItem('insightiq_auth_token');
+    const token = localStorage.getItem(TOKEN_KEY);
     if (token) {
       headers['Authorization'] = `Bearer ${token}`;
     }
@@ -333,6 +336,56 @@ export function getAuthHeaders(customHeaders: Record<string, string> = {}): Reco
   }
   return headers;
 }
+
+export async function refreshTokenApi(refreshToken?: string): Promise<AuthResponse> {
+  const tokenToUse = refreshToken || (typeof localStorage !== 'undefined' ? localStorage.getItem(REFRESH_TOKEN_KEY) : null);
+  if (!tokenToUse) {
+    throw new ApiError('No refresh token available', 'UNAUTHENTICATED');
+  }
+  const response = await fetch(`${API_BASE_URL}/api/auth/refresh`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ refresh_token: tokenToUse })
+  });
+
+  const res = await handleResponse<AuthResponse>(response);
+  if (res.access_token) {
+    try {
+      localStorage.setItem(TOKEN_KEY, res.access_token);
+    } catch {}
+  }
+  if (res.refresh_token) {
+    try {
+      localStorage.setItem(REFRESH_TOKEN_KEY, res.refresh_token);
+    } catch {}
+  }
+  return res;
+}
+
+export async function fetchWithAuth(url: string, init: RequestInit = {}): Promise<Response> {
+  const headers = getAuthHeaders((init.headers as Record<string, string>) || {});
+  let response = await fetch(url, { ...init, headers });
+
+  if (
+    response.status === 401 &&
+    !url.includes('/api/auth/refresh') &&
+    !url.includes('/api/auth/login') &&
+    !url.includes('/api/auth/signup')
+  ) {
+    try {
+      const refreshRes = await refreshTokenApi();
+      if (refreshRes && refreshRes.access_token) {
+        const retryHeaders = getAuthHeaders((init.headers as Record<string, string>) || {});
+        response = await fetch(url, { ...init, headers: retryHeaders });
+      }
+    } catch (e) {
+      // Refresh failed, proceed with original 401 response
+    }
+  }
+
+  return response;
+}
+
 
 export async function uploadFile(file: File, sheetName?: string): Promise<DatasetMetadataResponse> {
   const formData = new FormData();
@@ -789,6 +842,7 @@ export interface UserAuthInfo {
 
 export interface AuthResponse {
   access_token: string;
+  refresh_token?: string;
   token_type: string;
   user: UserAuthInfo;
 }
@@ -826,6 +880,21 @@ export async function loginApi(email: string, password: string): Promise<AuthRes
   });
   return await handleResponse<AuthResponse>(response);
 }
+
+export async function logoutBackendApi(refreshToken?: string): Promise<{ status: string }> {
+  try {
+    const tokenToUse = refreshToken || (typeof localStorage !== 'undefined' ? localStorage.getItem(REFRESH_TOKEN_KEY) : null);
+    const response = await fetch(`${API_BASE_URL}/api/auth/logout`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ refresh_token: tokenToUse })
+    });
+    return await handleResponse<{ status: string }>(response);
+  } catch {
+    return { status: 'ok' };
+  }
+}
+
 
 export async function getMeApi(token?: string): Promise<{ user: UserAuthInfo }> {
   const headers = getAuthHeaders(token ? { Authorization: `Bearer ${token}` } : {});
