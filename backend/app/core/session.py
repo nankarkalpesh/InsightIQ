@@ -1,6 +1,10 @@
-from typing import Dict, Optional
+import os
+import logging
+from typing import Dict, Optional, Any
 import pandas as pd
 from app.core.exceptions import FileNotFoundErrorCustom
+
+logger = logging.getLogger(__name__)
 
 _dataset_sessions: Dict[str, pd.DataFrame] = {}
 
@@ -10,16 +14,73 @@ def store_dataset(file_id: str, df: pd.DataFrame) -> None:
     _dataset_sessions[file_id] = df.copy(deep=False)
 
 
-def get_dataset(file_id: str) -> pd.DataFrame:
-    """Retrieve stored DataFrame by file_id, or raise 404 error if missing."""
-    if file_id not in _dataset_sessions:
-        raise FileNotFoundErrorCustom(f"Dataset session for file reference '{file_id}' not found or expired.")
-    return _dataset_sessions[file_id]
+def get_dataset(
+    file_id: str,
+    db: Optional[Any] = None,
+    current_user: Optional[Any] = None
+) -> pd.DataFrame:
+    """
+    Retrieve stored DataFrame by file_id from in-memory session.
+    If missing from memory (e.g. server restart, worker change, or new session),
+    attempt auto-hydration from PostgreSQL DatasetModel and disk storage
+    with strict user/guest ownership verification.
+    """
+    from app.models.db_models import DatasetModel
+    from app.ingestion.parser import parse_file
+    from app.core.database import SessionLocal
+
+    db_session = db
+    should_close = False
+    if db_session is None:
+        try:
+            db_session = SessionLocal()
+            should_close = True
+        except Exception:
+            db_session = None
+
+    if db_session is not None:
+        try:
+            rec = db_session.query(DatasetModel).filter(DatasetModel.id == file_id).first()
+            if rec:
+                # Security ownership check
+                if current_user is not None and getattr(current_user, "id", None) is not None:
+                    if rec.user_id is not None and rec.user_id != current_user.id:
+                        raise FileNotFoundErrorCustom(f"Access denied: Dataset '{file_id}' does not belong to current user.")
+
+                if file_id in _dataset_sessions:
+                    return _dataset_sessions[file_id]
+
+                if rec.file_path and os.path.exists(rec.file_path):
+                    ext = rec.file_type.lower().lstrip(".")
+                    logger.info(f"[SESSION HYDRATION] Re-loading dataset '{file_id}' from disk path: {rec.file_path}")
+                    df = parse_file(rec.file_path, ext)
+                    _dataset_sessions[file_id] = df
+                    return df
+                else:
+                    logger.warning(f"[SESSION HYDRATION FAILED] Disk path '{rec.file_path}' does not exist for dataset '{file_id}'.")
+                    raise FileNotFoundErrorCustom(
+                        f"Dataset file '{rec.filename}' is missing from server storage. Please re-upload your dataset."
+                    )
+        finally:
+            if should_close and db_session:
+                db_session.close()
+
+    # Fallback to in-memory cache if DB is unreachable or record not in DB (e.g. transient test dataset)
+    if file_id in _dataset_sessions:
+        return _dataset_sessions[file_id]
+
+    raise FileNotFoundErrorCustom(f"Dataset session for file reference '{file_id}' not found or expired.")
 
 
 def has_dataset(file_id: str) -> bool:
-    """Check if a dataset exists in memory session."""
-    return file_id in _dataset_sessions
+    """Check if a dataset exists in memory session or database."""
+    if file_id in _dataset_sessions:
+        return True
+    try:
+        get_dataset(file_id)
+        return True
+    except FileNotFoundErrorCustom:
+        return False
 
 
 def remove_dataset(file_id: str) -> None:

@@ -207,3 +207,58 @@ def test_dashboard_and_ds_state_persistence_and_resume():
     assert latest_run["model_name"] == "Random Forest Classifier"
     assert len(r_data["chat_history"]) >= 2
 
+
+def test_resumed_dataset_chat_after_session_eviction():
+    from app.core.session import remove_dataset, _dataset_sessions
+    unique_id = uuid.uuid4().hex[:8]
+    user_a_email = f"evict_user_a_{unique_id}@example.com"
+    user_b_email = f"evict_user_b_{unique_id}@example.com"
+    password = "PassWord123!"
+
+    # Signup User A and User B
+    s_a = client.post("/api/auth/signup", json={"email": user_a_email, "password": password})
+    token_a = s_a.json()["access_token"]
+    headers_a = {"Authorization": f"Bearer {token_a}"}
+
+    s_b = client.post("/api/auth/signup", json={"email": user_b_email, "password": password})
+    token_b = s_b.json()["access_token"]
+    headers_b = {"Authorization": f"Bearer {token_b}"}
+
+    # User A uploads dataset
+    csv_data = "city,revenue,customers\nChicago,5000,120\nNew York,9000,210\nBoston,4000,85\n"
+    files = {"file": ("test_evict.csv", io.BytesIO(csv_data.encode("utf-8")), "text/csv")}
+
+    upload_res = client.post("/api/upload", files=files, headers=headers_a)
+    assert upload_res.status_code == 201
+    file_id = upload_res.json()["file_id"]
+
+    # Manually evict dataset from Python in-memory session (simulating server restart / session expiry)
+    remove_dataset(file_id)
+    assert file_id not in _dataset_sessions
+
+    # 1. Resume dataset for User A -> auto-hydrates cleanly from disk & PostgreSQL
+    resume_res = client.get(f"/api/user/datasets/{file_id}/resume", headers=headers_a)
+    assert resume_res.status_code == 200
+    assert resume_res.json()["dataset"]["file_id"] == file_id
+
+    # 2. Data Chat for User A on the resumed dataset after eviction -> auto-hydrates and responds cleanly
+    remove_dataset(file_id) # Evict again
+    chat_res = client.post(
+        f"/api/dataset/{file_id}/chat",
+        json={"message": "Summarize this dataset and total revenue"},
+        headers=headers_a
+    )
+    assert chat_res.status_code == 200
+    c_data = chat_res.json()
+    assert "response_text" in c_data and len(c_data["response_text"]) > 0
+    assert "not found or expired" not in c_data["response_text"].lower()
+
+    # 3. Security Data Isolation: User B trying to access User A's file_id -> denied with 404 / 403
+    user_b_chat = client.post(
+        f"/api/dataset/{file_id}/chat",
+        json={"message": "Show me User A's data"},
+        headers=headers_b
+    )
+    assert user_b_chat.status_code in [403, 404]
+
+

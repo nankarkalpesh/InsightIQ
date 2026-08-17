@@ -272,7 +272,12 @@ export const DataChatWorkspace: React.FC<DataChatWorkspaceProps> = ({ onNavigate
           msg.id === aiMsgId
             ? {
                 ...msg,
-                text: res.response_text || msg.text || 'No response returned from assistant.',
+                text:
+                  res.response_text ||
+                  msg.text ||
+                  (res.tool_calls_made && res.tool_calls_made.length > 0
+                    ? `Executed analytics (${res.tool_calls_made.join(', ')}) on your dataset.`
+                    : 'Analysis complete.'),
                 toolCalls: res.tool_calls_made || msg.toolCalls || [],
                 suggestedAction: res.suggested_action !== undefined ? res.suggested_action : msg.suggestedAction,
               }

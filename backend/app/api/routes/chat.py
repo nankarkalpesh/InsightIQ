@@ -308,8 +308,8 @@ async def chat_with_dataset(
     Supports optional streaming for real-time incremental token rendering via SSE,
     and returns a suggested_action payload ONLY when actionable tools are invoked in the current turn.
     """
-    # 1. Verify dataset exists (raises 404 if missing)
-    get_dataset(file_id)
+    # 1. Verify dataset exists & ownership (auto-hydrates if missing from session memory)
+    get_dataset(file_id, db=db, current_user=current_user)
 
     # 2. Get active provider & effective Groq key for request
     active_provider = get_active_provider_for_request(current_user=current_user, session_id=x_session_id)

@@ -60,25 +60,19 @@ def resume_user_dataset(
 
     # Ensure file is loaded into session memory
     try:
-        get_dataset(dataset_id)
-    except KeyError:
-        if os.path.exists(rec.file_path):
-            if rec.file_type.lower() in [".csv"]:
-                df = pd.read_csv(rec.file_path)
-            elif rec.file_type.lower() in [".xlsx", ".xls"]:
-                df = pd.read_excel(rec.file_path)
-            elif rec.file_type.lower() in [".json"]:
-                df = pd.read_json(rec.file_path)
-            else:
-                df = pd.read_csv(rec.file_path)
+        df = get_dataset(dataset_id, db=db, current_user=current_user)
+    except Exception as e:
+        if rec.file_path and os.path.exists(rec.file_path):
+            ext = rec.file_type.lower().lstrip(".")
+            from app.ingestion.parser import parse_file
+            df = parse_file(rec.file_path, ext)
             store_dataset(dataset_id, df)
         else:
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
-                detail=f"Dataset file missing from disk path '{rec.file_path}'."
+                detail=f"Dataset file missing from server storage path '{rec.file_path}'."
             )
 
-    df = get_dataset(dataset_id)
     health = dataset_health(df)
     schema = column_schema(df)
     insights = generate_insights(df)
