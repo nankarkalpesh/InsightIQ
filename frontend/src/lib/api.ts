@@ -391,7 +391,9 @@ export async function selectSheet(fileId: string, sheetName: string): Promise<Da
 
 export async function fetchDatasetOverview(fileId: string): Promise<DatasetOverviewResponse> {
   try {
-    const response = await fetch(`${API_BASE_URL}/api/dataset/${encodeURIComponent(fileId)}/overview`);
+    const response = await fetch(`${API_BASE_URL}/api/dataset/${encodeURIComponent(fileId)}/overview`, {
+      headers: getAuthHeaders(),
+    });
     return await handleResponse<DatasetOverviewResponse>(response);
   } catch (error) {
     if (error instanceof ApiError) {
@@ -412,7 +414,8 @@ export async function fetchDatasetPreview(
 ): Promise<PaginatedPreviewResponse> {
   try {
     const response = await fetch(
-      `${API_BASE_URL}/api/dataset/${encodeURIComponent(fileId)}/preview?page=${page}&page_size=${pageSize}`
+      `${API_BASE_URL}/api/dataset/${encodeURIComponent(fileId)}/preview?page=${page}&page_size=${pageSize}`,
+      { headers: getAuthHeaders() }
     );
     return await handleResponse<PaginatedPreviewResponse>(response);
   } catch (error) {
@@ -429,7 +432,9 @@ export async function fetchDatasetPreview(
 
 export async function fetchDatasetKPIs(fileId: string): Promise<KPIRecommendationResponse> {
   try {
-    const response = await fetch(`${API_BASE_URL}/api/dataset/${encodeURIComponent(fileId)}/kpis`);
+    const response = await fetch(`${API_BASE_URL}/api/dataset/${encodeURIComponent(fileId)}/kpis`, {
+      headers: getAuthHeaders(),
+    });
     return await handleResponse<KPIRecommendationResponse>(response);
   } catch (error) {
     if (error instanceof ApiError) {
@@ -445,7 +450,9 @@ export async function fetchDatasetKPIs(fileId: string): Promise<KPIRecommendatio
 
 export async function fetchDatasetCharts(fileId: string): Promise<ChartRecommendationResponse> {
   try {
-    const response = await fetch(`${API_BASE_URL}/api/dataset/${encodeURIComponent(fileId)}/charts`);
+    const response = await fetch(`${API_BASE_URL}/api/dataset/${encodeURIComponent(fileId)}/charts`, {
+      headers: getAuthHeaders(),
+    });
     return await handleResponse<ChartRecommendationResponse>(response);
   } catch (error) {
     if (error instanceof ApiError) {
@@ -478,7 +485,10 @@ export async function fetchChartData(
   }
 
   try {
-    const response = await fetch(`${API_BASE_URL}/api/dataset/${encodeURIComponent(fileId)}/chart-data?${params.toString()}`);
+    const response = await fetch(
+      `${API_BASE_URL}/api/dataset/${encodeURIComponent(fileId)}/chart-data?${params.toString()}`,
+      { headers: getAuthHeaders() }
+    );
     return await handleResponse<ChartDataResponse>(response);
   } catch (error) {
     if (error instanceof ApiError) {
@@ -494,7 +504,9 @@ export async function fetchChartData(
 
 export async function fetchTargetCandidates(fileId: string): Promise<TargetCandidatesResponse> {
   try {
-    const response = await fetch(`${API_BASE_URL}/api/dataset/${encodeURIComponent(fileId)}/target-candidates`);
+    const response = await fetch(`${API_BASE_URL}/api/dataset/${encodeURIComponent(fileId)}/target-candidates`, {
+      headers: getAuthHeaders(),
+    });
     return await handleResponse<TargetCandidatesResponse>(response);
   } catch (error) {
     if (error instanceof ApiError) {
@@ -514,7 +526,8 @@ export async function fetchFeatureCandidates(
 ): Promise<FeatureCandidatesResponse> {
   try {
     const response = await fetch(
-      `${API_BASE_URL}/api/dataset/${encodeURIComponent(fileId)}/feature-candidates?target=${encodeURIComponent(targetCol)}`
+      `${API_BASE_URL}/api/dataset/${encodeURIComponent(fileId)}/feature-candidates?target=${encodeURIComponent(targetCol)}`,
+      { headers: getAuthHeaders() }
     );
     return await handleResponse<FeatureCandidatesResponse>(response);
   } catch (error) {
@@ -541,7 +554,8 @@ export async function fetchModelRecommendations(
 
   try {
     const response = await fetch(
-      `${API_BASE_URL}/api/dataset/${encodeURIComponent(fileId)}/model-recommendations?${params.toString()}`
+      `${API_BASE_URL}/api/dataset/${encodeURIComponent(fileId)}/model-recommendations?${params.toString()}`,
+      { headers: getAuthHeaders() }
     );
     return await handleResponse<ModelRecommendationsResponse>(response);
   } catch (error) {
@@ -565,9 +579,9 @@ export async function trainModel(
   try {
     const response = await fetch(`${API_BASE_URL}/api/dataset/${encodeURIComponent(fileId)}/train`, {
       method: 'POST',
-      headers: {
+      headers: getAuthHeaders({
         'Content-Type': 'application/json',
-      },
+      }),
       body: JSON.stringify({
         target,
         features,
@@ -595,9 +609,9 @@ export async function predictWithModel(
   try {
     const response = await fetch(`${API_BASE_URL}/api/dataset/${encodeURIComponent(fileId)}/predict`, {
       method: 'POST',
-      headers: {
+      headers: getAuthHeaders({
         'Content-Type': 'application/json',
-      },
+      }),
       body: JSON.stringify({
         training_run_id: trainingRunId,
         input_values: inputValues,

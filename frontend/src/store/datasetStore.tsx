@@ -41,6 +41,7 @@ export const DatasetProvider: React.FC<{ children: React.ReactNode }> = ({ child
     let isMounted = true;
 
     const restoreSession = async () => {
+      let savedData: DatasetMetadataResponse | null = null;
       try {
         const savedSessionStr = localStorage.getItem(sessionKey);
         if (!savedSessionStr) {
@@ -51,7 +52,7 @@ export const DatasetProvider: React.FC<{ children: React.ReactNode }> = ({ child
           return;
         }
 
-        const savedData: DatasetMetadataResponse = JSON.parse(savedSessionStr);
+        savedData = JSON.parse(savedSessionStr);
         if (!savedData || !savedData.file_id) {
           localStorage.removeItem(sessionKey);
           if (isMounted) {
@@ -61,20 +62,28 @@ export const DatasetProvider: React.FC<{ children: React.ReactNode }> = ({ child
           return;
         }
 
-        // Validate backend session exists
+        // Validate backend session exists with auth headers
         await fetchDatasetOverview(savedData.file_id);
 
         if (isMounted) {
           setDatasetState(savedData);
           setIsRestoringSession(false);
         }
-      } catch (err) {
-        console.warn('Backend session expired or unreachable:', err);
-        localStorage.removeItem(sessionKey);
-        if (isMounted) {
-          setDatasetState(null);
-          setSessionError('Your previous session expired or the server restarted. Please re-upload your dataset.');
-          setIsRestoringSession(false);
+      } catch (err: any) {
+        console.warn('Backend session validation:', err);
+        if (err?.errorCode === 'NETWORK_ERROR' && savedData) {
+          // Keep saved session state during server cold start so user can retry when server wakes up
+          if (isMounted) {
+            setDatasetState(savedData);
+            setIsRestoringSession(false);
+          }
+        } else {
+          localStorage.removeItem(sessionKey);
+          if (isMounted) {
+            setDatasetState(null);
+            setSessionError('Your previous session expired or the file reference is no longer valid. Please re-upload your dataset.');
+            setIsRestoringSession(false);
+          }
         }
       }
     };
