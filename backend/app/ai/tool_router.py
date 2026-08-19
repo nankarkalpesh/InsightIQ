@@ -376,7 +376,10 @@ def aggregate_data(
 
     # 4. Normalize group_by_column before grouping using ml_profiling's normalize_categorical_series
     norm_series, _, _, ambiguous_abbs = normalize_categorical_series(df[group_by_column])
-    temp_df = df.copy()
+    cols_needed = [group_by_column]
+    if value_column and value_column in df.columns and value_column != group_by_column:
+        cols_needed.append(value_column)
+    temp_df = df[cols_needed].copy()
     temp_df["_norm_group"] = norm_series
     temp_df = temp_df.dropna(subset=["_norm_group"])
     total_groups = int(temp_df["_norm_group"].nunique(dropna=True))

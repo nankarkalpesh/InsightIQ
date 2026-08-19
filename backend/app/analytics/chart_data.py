@@ -54,7 +54,10 @@ def get_chart_data(
     # 2. LINE CHART WITH DATE GRANULARITY
     is_date_col = pd.api.types.is_datetime64_any_dtype(df[x_axis]) or "date" in x_axis.lower() or "time" in x_axis.lower()
     if chart_type == "line" or is_date_col or date_granularity:
-        temp_df = df.copy()
+        cols_to_select = [x_axis]
+        if y_axis in df.columns and y_axis != x_axis:
+            cols_to_select.append(y_axis)
+        temp_df = df[cols_to_select].copy()
         try:
             temp_df["_dt_col"] = pd.to_datetime(temp_df[x_axis], errors="coerce")
             temp_df = temp_df.dropna(subset=["_dt_col"])
@@ -93,7 +96,10 @@ def get_chart_data(
             pass
 
     # 3. STANDARD BAR / COLUMN / DONUT / TABLE GROUPING
-    temp_df = df.copy()
+    cols_to_select = [x_axis]
+    if y_axis in df.columns and y_axis != x_axis:
+        cols_to_select.append(y_axis)
+    temp_df = df[cols_to_select].copy()
     temp_df = temp_df.dropna(subset=[x_axis])
 
     if y_axis == "count" or aggregation == "COUNT":

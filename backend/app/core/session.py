@@ -6,11 +6,16 @@ from app.core.exceptions import FileNotFoundErrorCustom
 
 logger = logging.getLogger(__name__)
 
+MAX_DATASET_SESSIONS = 2
 _dataset_sessions: Dict[str, pd.DataFrame] = {}
 
 
 def store_dataset(file_id: str, df: pd.DataFrame) -> None:
-    """Store a parsed DataFrame in memory, keyed by file_id."""
+    """Store a parsed DataFrame in bounded memory session."""
+    if len(_dataset_sessions) >= MAX_DATASET_SESSIONS and file_id not in _dataset_sessions:
+        # Evict oldest entry to prevent RAM accumulation
+        oldest_key = next(iter(_dataset_sessions))
+        _dataset_sessions.pop(oldest_key, None)
     _dataset_sessions[file_id] = df.copy(deep=False)
 
 
@@ -20,14 +25,17 @@ def get_dataset(
     current_user: Optional[Any] = None
 ) -> pd.DataFrame:
     """
-    Retrieve stored DataFrame by file_id from in-memory session.
-    If missing from memory (e.g. server restart, worker change, or new session),
-    attempt auto-hydration from PostgreSQL DatasetModel and disk storage
-    with strict user/guest ownership verification.
+    Retrieve stored DataFrame by file_id.
+    Prefers bounded memory cache, then auto-hydrates from local disk storage / DB blob.
+    Does NOT retain hydrated DataFrames in global memory permanently to optimize RAM.
     """
+    if file_id in _dataset_sessions:
+        return _dataset_sessions[file_id]
+
     from app.models.db_models import DatasetModel
     from app.ingestion.parser import parse_file
     from app.core.database import SessionLocal
+    from app.core.storage import ensure_local_dataset_file
 
     db_session = db
     should_close = False
@@ -47,19 +55,13 @@ def get_dataset(
                     if rec.user_id is not None and rec.user_id != current_user.id:
                         raise FileNotFoundErrorCustom(f"Access denied: Dataset '{file_id}' does not belong to current user.")
 
-                if file_id in _dataset_sessions:
-                    return _dataset_sessions[file_id]
-
-                from app.core.storage import get_dataset_file_bytes, get_local_cache_path
                 ext = rec.file_type.lower().lstrip(".")
                 
                 try:
-                    # Retrieve raw bytes from persistent storage layer (PostgreSQL blob / local cache / S3)
-                    content_bytes = get_dataset_file_bytes(file_id=rec.id, filename=rec.filename, user_id=rec.user_id, db=db_session)
-                    local_cache = get_local_cache_path(rec.id, rec.filename, rec.user_id)
-                    logger.info(f"[SESSION HYDRATION] Auto-hydrating dataset '{file_id}' ({len(content_bytes)} bytes) from persistent storage.")
+                    # Ensure file exists on disk (from DB blob if missing) without reading raw bytes into memory
+                    local_cache = ensure_local_dataset_file(file_id=rec.id, filename=rec.filename, user_id=rec.user_id, db=db_session)
+                    logger.info(f"[SESSION HYDRATION] Auto-hydrating dataset '{file_id}' from disk cache '{local_cache}'.")
                     df = parse_file(local_cache, ext)
-                    _dataset_sessions[file_id] = df
                     return df
                 except Exception as err:
                     logger.warning(f"[SESSION HYDRATION FAILED] Could not restore dataset '{file_id}': {err}")

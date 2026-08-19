@@ -126,6 +126,28 @@ def get_dataset_file_bytes(
     raise FileNotFoundErrorCustom("The dataset file is no longer available on server storage. Please re-upload your dataset.")
 
 
+def ensure_local_dataset_file(
+    file_id: str,
+    filename: str = "dataset.csv",
+    user_id: Optional[str] = None,
+    db: Optional[Session] = None
+) -> str:
+    """
+    Ensure the dataset file exists on local disk cache, restoring it from DB blob or S3 if missing.
+    Returns the absolute local file path WITHOUT holding raw bytes in memory if file already exists.
+    """
+    local_path = get_local_cache_path(file_id, filename, user_id)
+    if os.path.exists(local_path) and os.path.getsize(local_path) > 0:
+        return local_path
+
+    # Restore from DB blob or S3
+    get_dataset_file_bytes(file_id=file_id, filename=filename, user_id=user_id, db=db)
+    if os.path.exists(local_path) and os.path.getsize(local_path) > 0:
+        return local_path
+
+    raise FileNotFoundErrorCustom("The dataset file is no longer available on server storage. Please re-upload your dataset.")
+
+
 def delete_dataset_file(
     file_id: str,
     filename: str = "dataset.csv",

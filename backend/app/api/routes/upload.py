@@ -129,6 +129,7 @@ async def upload_file(
         db=db
     )
     dest_path = get_local_cache_path(file_id, file.filename, user_id)
+    del file_bytes  # Release temporary binary upload buffer from RAM
 
     # Excel file handling
     if ext in ("xlsx", "xls"):
