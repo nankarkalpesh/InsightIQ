@@ -31,6 +31,9 @@ class DatasetModel(Base):
     column_count = Column(Integer, nullable=True)
     file_path = Column(String(512), nullable=False)
     uploaded_at = Column(DateTime, default=datetime.utcnow)
+    is_saved = Column(Boolean, default=False, nullable=False, index=True)
+    saved_at = Column(DateTime, nullable=True, index=True)
+    activity_name = Column(String(255), nullable=True)
 
     owner = relationship("User", back_populates="datasets")
     blob = relationship("DatasetFileBlobModel", back_populates="dataset", uselist=False, cascade="all, delete-orphan")

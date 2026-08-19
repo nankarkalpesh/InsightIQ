@@ -60,18 +60,28 @@ def init_db():
     from app.models import db_models  # noqa
     Base.metadata.create_all(bind=engine)
 
-    # Database migration: check if preferred_llm_provider / groq_api_key columns exist in users table
+    # Database migration: check if columns exist in users and datasets tables
     try:
         from sqlalchemy import inspect, text
         inspector = inspect(engine)
-        if inspector.has_table("users"):
-            columns = [col["name"] for col in inspector.get_columns("users")]
-            if columns:
-                with engine.begin() as conn:
-                    if "preferred_llm_provider" not in columns:
-                        conn.execute(text("ALTER TABLE users ADD COLUMN preferred_llm_provider VARCHAR(50);"))
-                    if "groq_api_key" not in columns:
-                        conn.execute(text("ALTER TABLE users ADD COLUMN groq_api_key VARCHAR(255);"))
+        with engine.begin() as conn:
+            if inspector.has_table("users"):
+                user_cols = [col["name"] for col in inspector.get_columns("users")]
+                if "preferred_llm_provider" not in user_cols:
+                    conn.execute(text("ALTER TABLE users ADD COLUMN preferred_llm_provider VARCHAR(50);"))
+                if "groq_api_key" not in user_cols:
+                    conn.execute(text("ALTER TABLE users ADD COLUMN groq_api_key VARCHAR(255);"))
+            if inspector.has_table("datasets"):
+                ds_cols = [col["name"] for col in inspector.get_columns("datasets")]
+                is_sqlite = engine.name == "sqlite"
+                if "is_saved" not in ds_cols:
+                    default_bool = "0" if is_sqlite else "FALSE"
+                    conn.execute(text(f"ALTER TABLE datasets ADD COLUMN is_saved BOOLEAN NOT NULL DEFAULT {default_bool};"))
+                if "saved_at" not in ds_cols:
+                    dt_type = "DATETIME" if is_sqlite else "TIMESTAMP"
+                    conn.execute(text(f"ALTER TABLE datasets ADD COLUMN saved_at {dt_type};"))
+                if "activity_name" not in ds_cols:
+                    conn.execute(text("ALTER TABLE datasets ADD COLUMN activity_name VARCHAR(255);"))
     except Exception as e:
         logger.warning(f"DB Migration note: {e}")
 

@@ -853,10 +853,17 @@ export interface AuthResponse {
 export interface UserDatasetItem {
   file_id: string;
   filename: string;
+  activity_name?: string;
   file_type: string;
+  file_size?: number;
   row_count?: number;
   column_count?: number;
   uploaded_at?: string;
+  saved_at?: string;
+  chat_count?: number;
+  kpi_count?: number;
+  chart_count?: number;
+  ml_count?: number;
 }
 
 export interface ResumeDatasetResponse {
@@ -905,16 +912,46 @@ export async function getMeApi(token?: string): Promise<{ user: UserAuthInfo }> 
   return await handleResponse<{ user: UserAuthInfo }>(response);
 }
 
-export async function getUserDatasetsApi(): Promise<{ datasets: UserDatasetItem[] }> {
+export async function getUserDatasetsApi(savedOnly: boolean = true): Promise<{ datasets: UserDatasetItem[]; total?: number }> {
   const headers = getAuthHeaders();
-  const response = await fetch(`${API_BASE_URL}/api/user/datasets`, { headers });
-  return await handleResponse<{ datasets: UserDatasetItem[] }>(response);
+  const url = `${API_BASE_URL}/api/user/datasets${savedOnly ? '?saved_only=true' : '?saved_only=false'}`;
+  const response = await fetch(url, { headers });
+  return await handleResponse<{ datasets: UserDatasetItem[]; total?: number }>(response);
 }
 
 export async function resumeUserDatasetApi(datasetId: string): Promise<ResumeDatasetResponse> {
   const headers = getAuthHeaders();
   const response = await fetch(`${API_BASE_URL}/api/user/datasets/${datasetId}/resume`, { headers });
   return await handleResponse<ResumeDatasetResponse>(response);
+}
+
+export async function saveActivityApi(
+  datasetId: string,
+  activityName?: string,
+  dashboardItems?: any[],
+  dsState?: Record<string, any>
+): Promise<{ status: string; file_id: string; saved_at: string; message: string }> {
+  const headers = getAuthHeaders({ 'Content-Type': 'application/json' });
+  const payload: Record<string, any> = {};
+  if (activityName) payload.activity_name = activityName;
+  if (dashboardItems) payload.dashboard_items = dashboardItems;
+  if (dsState) payload.ds_state = dsState;
+
+  const response = await fetch(`${API_BASE_URL}/api/user/datasets/${datasetId}/save-activity`, {
+    method: 'POST',
+    headers,
+    body: JSON.stringify(payload)
+  });
+  return await handleResponse<{ status: string; file_id: string; saved_at: string; message: string }>(response);
+}
+
+export async function deleteUserDatasetApi(datasetId: string): Promise<{ status: string; file_id: string; message: string }> {
+  const headers = getAuthHeaders();
+  const response = await fetch(`${API_BASE_URL}/api/user/datasets/${datasetId}`, {
+    method: 'DELETE',
+    headers
+  });
+  return await handleResponse<{ status: string; file_id: string; message: string }>(response);
 }
 
 export async function saveDashboardConfigApi(datasetId: string, items: any[]): Promise<{ status: string; message: string }> {

@@ -1,14 +1,77 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { Menu, Database, User, Sun, Moon, LogOut, LogIn, UserPlus, FolderClock, Settings, ChevronDown } from 'lucide-react';
+import { Menu, Database, User, Sun, Moon, LogOut, LogIn, UserPlus, FolderClock, Settings, ChevronDown, Bookmark, CheckCircle2, RefreshCw } from 'lucide-react';
 import { useTheme } from '../../hooks/useTheme';
 import { useDataset } from '../../store/datasetStore';
 import { useAuth } from '../../store/authStore';
+import { saveActivityApi } from '../../lib/api';
 import { BrandLogo } from '../icons/BrandLogo';
 
 interface TopBarProps {
   onOpenMobileMenu: () => void;
   onSelectNavItem?: (item: any) => void;
 }
+
+const SaveActivityButton: React.FC<{ datasetId: string }> = ({ datasetId }) => {
+  const [saveStatus, setSaveStatus] = useState<'idle' | 'saving' | 'saved' | 'error'>('idle');
+
+  const handleSave = async () => {
+    if (saveStatus === 'saving') return;
+    setSaveStatus('saving');
+    try {
+      // Gather local storage dashboard items if available
+      let dashItems: any[] | undefined = undefined;
+      try {
+        const keys = Object.keys(localStorage);
+        const dashKey = keys.find((k) => k.includes('_dashboard_') && k.includes(datasetId));
+        if (dashKey) {
+          dashItems = JSON.parse(localStorage.getItem(dashKey) || '[]');
+        }
+      } catch (e) {}
+
+      await saveActivityApi(datasetId, undefined, dashItems);
+      setSaveStatus('saved');
+      setTimeout(() => setSaveStatus('idle'), 4000);
+    } catch (err: any) {
+      console.error('Failed to save activity:', err);
+      setSaveStatus('error');
+      setTimeout(() => setSaveStatus('idle'), 3000);
+    }
+  };
+
+  return (
+    <button
+      onClick={handleSave}
+      disabled={saveStatus === 'saving'}
+      className={`px-3 py-1.5 rounded-xl text-xs font-semibold border transition-all duration-150 flex items-center gap-1.5 cursor-pointer shrink-0 shadow-2xs ${
+        saveStatus === 'saved'
+          ? 'bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border-emerald-500/30'
+          : saveStatus === 'error'
+          ? 'bg-red-500/10 text-red-600 border-red-500/30'
+          : 'bg-primary text-on-primary border-primary hover:bg-primary-active'
+      }`}
+      title="Explicitly save dataset analysis, dashboard, and chat history"
+    >
+      {saveStatus === 'saving' ? (
+        <>
+          <RefreshCw className="w-3.5 h-3.5 animate-spin" />
+          <span className="hidden sm:inline">Saving...</span>
+        </>
+      ) : saveStatus === 'saved' ? (
+        <>
+          <CheckCircle2 className="w-3.5 h-3.5 text-emerald-500" />
+          <span>Saved ✓</span>
+        </>
+      ) : saveStatus === 'error' ? (
+        <span>Save Failed</span>
+      ) : (
+        <>
+          <Bookmark className="w-3.5 h-3.5" />
+          <span className="hidden sm:inline">Save Activity</span>
+        </>
+      )}
+    </button>
+  );
+};
 
 export const TopBar: React.FC<TopBarProps> = ({
   onOpenMobileMenu,
@@ -62,17 +125,22 @@ export const TopBar: React.FC<TopBarProps> = ({
         </div>
       </div>
 
-      {/* Middle: Active Dataset Badge */}
-      <div className="flex-1 max-w-sm mx-4">
-        <div className="flex items-center gap-2.5 px-3 py-2 bg-surface-card text-ink text-sm font-medium rounded-md border border-hairline shadow-2xs">
+      {/* Middle: Active Dataset Badge + Save Activity Action */}
+      <div className="flex-1 max-w-lg mx-4 flex items-center gap-2">
+        <div className="flex-1 flex items-center gap-2.5 px-3 py-1.5 bg-surface-card text-ink text-sm font-medium rounded-xl border border-hairline shadow-2xs min-w-0">
           <Database className={`w-4 h-4 shrink-0 ${dataset ? 'text-primary' : 'text-muted'}`} />
           <span className={`truncate text-xs sm:text-sm ${dataset ? 'text-ink font-semibold' : 'text-muted'}`}>
             {datasetDisplayText}
           </span>
           {dataset && (
-            <span className="ml-auto w-2 h-2 rounded-full bg-success shrink-0" title="Active in Session" />
+            <span className="ml-auto w-2 h-2 rounded-full bg-emerald-500 shrink-0 animate-pulse" title="Active in Session" />
           )}
         </div>
+
+        {/* Save Activity Action Button for Logged-In Users */}
+        {dataset && isAuthenticated && (
+          <SaveActivityButton datasetId={dataset.file_id} />
+        )}
       </div>
 
       {/* Right side: Theme Toggle + Profile Dropdown */}
