@@ -134,11 +134,7 @@ def _prepare_messages_for_ollama(messages: List[Dict[str, Any]]) -> List[Dict[st
 
 GROQ_MODEL_FALLBACKS = [
     "llama-3.3-70b-versatile",
-    "llama-3.1-8b-instant",
-    "llama-3.2-3b-preview",
-    "mixtral-8x7b-32768",
-    "gemma2-9b-it",
-    "deepseek-r1-distill-llama-70b"
+    "llama-3.1-8b-instant"
 ]
 
 _cached_working_groq_model: Optional[str] = None
@@ -196,15 +192,26 @@ def chat_groq(
             with httpx.Client(timeout=60.0) as client:
                 resp = client.post("https://api.groq.com/openai/v1/chat/completions", json=payload, headers=headers)
                 if resp.status_code != 200:
+                    resp_lower = resp.text.lower()
                     last_error_msg = f"Groq API returned HTTP {resp.status_code}: {resp.text}"
+
+                    # HTTP 401 Invalid API key -> Immediate auth error, DO NOT fallback across models
+                    if resp.status_code == 401 or "invalid_api_key" in resp_lower or "invalid api key" in resp_lower:
+                        return {
+                            "error": "groq_unavailable",
+                            "message": "Invalid Groq API key provided. Please verify your GROQ_API_KEY environment variable."
+                        }
+
+                    # Model-specific errors (HTTP 400 decommissioned, 404 not found, 429 rate limit) -> fallback to next candidate
                     if (
-                        resp.status_code in (404, 429) or
-                        "model_not_found" in resp.text or
-                        "does not exist" in resp.text or
-                        "decommissioned" in resp.text
+                        resp.status_code in (400, 404, 429) or
+                        "model_not_found" in resp_lower or
+                        "does not exist" in resp_lower or
+                        "decommissioned" in resp_lower
                     ):
                         logger.warning(f"[GROQ FALLBACK] Model '{candidate_model}' returned {resp.status_code}. Trying fallback model...")
                         continue
+
                     return {
                         "error": "groq_unavailable",
                         "message": last_error_msg
@@ -290,11 +297,15 @@ def chat_stream_groq(
             with httpx.Client(timeout=60.0) as client:
                 with client.stream("POST", "https://api.groq.com/openai/v1/chat/completions", json=payload, headers=headers) as response:
                     if response.status_code != 200:
+                        resp_lower = response.text.lower() if hasattr(response, "text") and response.text else ""
+                        if response.status_code == 401 or "invalid_api_key" in resp_lower:
+                            yield " [Error streaming from Groq: Invalid API key provided. Please verify your GROQ_API_KEY environment variable]"
+                            return
                         if (
-                            response.status_code in (404, 429) or
-                            "model_not_found" in response.text or
-                            "does not exist" in response.text or
-                            "decommissioned" in response.text
+                            response.status_code in (400, 404, 429) or
+                            "model_not_found" in resp_lower or
+                            "does not exist" in resp_lower or
+                            "decommissioned" in resp_lower
                         ):
                             logger.warning(f"[GROQ STREAM FALLBACK] Model '{candidate_model}' returned {response.status_code}. Trying fallback model...")
                             continue

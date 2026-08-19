@@ -303,14 +303,13 @@ def test_persistent_storage_blob_hydration_and_groq_fallback(monkeypatch):
     assert o_data["health"]["total_rows"] == 3
     assert o_data["health"]["total_columns"] == 3
 
-    # 3. Verify Groq model candidates fallback chain contains valid production Groq models
+    # 3. Verify Groq model candidates fallback chain contains only active production Groq models
     import app.ai.ollama_client as oc
     oc._cached_working_groq_model = None
     candidates = get_groq_model_candidates("llama-3.3-70b-versatile")
-    assert len(candidates) >= 2
-    assert "llama-3.3-70b-versatile" in candidates
-    assert "llama-3.1-8b-instant" in candidates
-    assert "mixtral-8x7b-32768" in candidates
+    assert candidates == ["llama-3.3-70b-versatile", "llama-3.1-8b-instant"]
+    for deprecated in ["deepseek-r1-distill-llama-70b", "llama-3.2-3b-preview", "mixtral-8x7b-32768", "gemma2-9b-it"]:
+        assert deprecated not in candidates
 
 
 def test_access_token_expiration_and_refresh_success():
@@ -445,6 +444,59 @@ def test_resumed_dataset_usable_after_token_refresh():
     preview_res = client.get(f"/api/dataset/{file_id}/preview", headers={"Authorization": f"Bearer {token_2}"})
     assert preview_res.status_code == 200
     assert preview_res.json()["total_rows"] == 2
+
+
+def test_groq_model_fallbacks_and_error_handling():
+    import app.ai.ollama_client as oc
+    from unittest.mock import patch, MagicMock
+
+    # 1. Default model is llama-3.3-70b-versatile
+    assert oc.DEFAULT_GROQ_MODEL == "llama-3.3-70b-versatile"
+
+    # 2. Fallback candidate list contains only active approved models
+    oc._cached_working_groq_model = None
+    candidates = oc.get_groq_model_candidates()
+    assert candidates == ["llama-3.3-70b-versatile", "llama-3.1-8b-instant"]
+
+    # 3. Deprecated model IDs are not present
+    for deprecated in ["deepseek-r1-distill-llama-70b", "llama-3.2-3b-preview", "mixtral-8x7b-32768", "gemma2-9b-it"]:
+        assert deprecated not in candidates
+
+    # 4. HTTP 401 Invalid API Key does NOT trigger model fallback (returns immediate auth error)
+    mock_401_resp = MagicMock()
+    mock_401_resp.status_code = 401
+    mock_401_resp.text = '{"error":{"message":"Invalid API Key","type":"invalid_request_error","code":"invalid_api_key"}}'
+
+    with patch("httpx.Client.post", return_value=mock_401_resp) as mock_post:
+        res = oc.chat_groq(messages=[{"role": "user", "content": "hello"}], groq_api_key="gsk_invalid_test_key")
+        assert res.get("error") == "groq_unavailable"
+        assert "Invalid Groq API key provided" in res.get("message", "")
+        # Must only call mock_post ONCE (no fallback iteration on HTTP 401)
+        assert mock_post.call_count == 1
+
+    # 5 & 6. HTTP 400 decommissioned model DOES trigger fallback to next candidate
+    mock_400_decommissioned = MagicMock()
+    mock_400_decommissioned.status_code = 400
+    mock_400_decommissioned.text = '{"error":{"message":"The model has been decommissioned","code":"model_decommissioned"}}'
+
+    mock_200_success = MagicMock()
+    mock_200_success.status_code = 200
+    mock_200_success.json.return_value = {
+        "choices": [{"message": {"content": "Fallback model response", "role": "assistant"}}]
+    }
+
+    with patch("httpx.Client.post", side_effect=[mock_400_decommissioned, mock_200_success]) as mock_post:
+        res = oc.chat_groq(messages=[{"role": "user", "content": "hello"}], groq_api_key="gsk_valid_mock_key")
+        assert res.get("content") == "Fallback model response"
+        assert res.get("active_model") == "llama-3.1-8b-instant"
+        assert mock_post.call_count == 2
+
+    # 7. If all active models fail, return a clear Groq unavailable error
+    with patch("httpx.Client.post", return_value=mock_400_decommissioned) as mock_post:
+        res = oc.chat_groq(messages=[{"role": "user", "content": "hello"}], groq_api_key="gsk_valid_mock_key")
+        assert res.get("error") == "groq_unavailable"
+        assert "Groq API returned HTTP 400" in res.get("message", "")
+        assert mock_post.call_count == 2
 
 
 
