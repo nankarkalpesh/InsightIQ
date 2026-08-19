@@ -57,13 +57,28 @@ def build_column_metadata(df) -> list[ColumnMetadata]:
     ]
 
 
-def find_file_by_id(file_id: str) -> Path:
+def find_file_by_id(file_id: str, db: Optional[Session] = None) -> Path:
     # Look for matching file in uploads directory recursively
     uploads_dir = get_uploads_dir()
     if uploads_dir.exists():
         for p in uploads_dir.rglob("*"):
             if p.is_file() and p.name.startswith(file_id):
                 return p
+
+    # Fallback: try hydrating from database blob table if available
+    if db is not None:
+        try:
+            from app.models.db_models import DatasetModel
+            rec = db.query(DatasetModel).filter(DatasetModel.id == file_id).first()
+            if rec:
+                from app.core.storage import get_dataset_file_bytes, get_local_cache_path
+                get_dataset_file_bytes(file_id=rec.id, filename=rec.filename, user_id=rec.user_id, db=db)
+                local_path = get_local_cache_path(rec.id, rec.filename, rec.user_id)
+                if os.path.exists(local_path):
+                    return Path(local_path)
+        except Exception as e:
+            logger.warning(f"find_file_by_id failed to hydrate blob for dataset '{file_id}': {e}")
+
     raise FileNotFoundErrorCustom(f"File reference '{file_id}' not found.")
 
 
@@ -206,7 +221,7 @@ async def select_excel_sheet(
     current_user: Optional[User] = Depends(get_optional_user),
     db: Session = Depends(get_db)
 ):
-    file_path = find_file_by_id(payload.file_id)
+    file_path = find_file_by_id(payload.file_id, db=db)
     ext = get_file_extension(file_path.name)
     sheet_names = get_excel_sheet_names(file_path)
 

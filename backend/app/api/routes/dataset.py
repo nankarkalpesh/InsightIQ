@@ -73,8 +73,12 @@ def _clean_record(val: Any) -> Any:
 
 
 @router.get("/{file_id}/overview", response_model=DatasetOverviewResponse)
-async def get_dataset_overview(file_id: str):
-    df = get_dataset(file_id)
+async def get_dataset_overview(
+    file_id: str,
+    current_user: Optional[User] = Depends(get_optional_user),
+    db: Session = Depends(get_db)
+):
+    df = get_dataset(file_id, db=db, current_user=current_user)
 
     health_data = dataset_health(df)
     schema_data = column_schema(df)
@@ -94,9 +98,11 @@ async def get_dataset_overview(file_id: str):
 async def get_dataset_preview(
     file_id: str,
     page: int = Query(1, ge=1, description="Page number starting at 1"),
-    page_size: int = Query(50, ge=1, le=500, description="Number of items per page (max 500)")
+    page_size: int = Query(50, ge=1, le=500, description="Number of items per page (max 500)"),
+    current_user: Optional[User] = Depends(get_optional_user),
+    db: Session = Depends(get_db)
 ):
-    df = get_dataset(file_id)
+    df = get_dataset(file_id, db=db, current_user=current_user)
     total_rows = len(df)
 
     if total_rows == 0:
@@ -131,8 +137,12 @@ async def get_dataset_preview(
 
 
 @router.get("/{file_id}/kpis", response_model=KPIRecommendationResponse)
-async def get_dataset_kpis(file_id: str):
-    df = get_dataset(file_id)
+async def get_dataset_kpis(
+    file_id: str,
+    current_user: Optional[User] = Depends(get_optional_user),
+    db: Session = Depends(get_db)
+):
+    df = get_dataset(file_id, db=db, current_user=current_user)
     kpi_result = recommend_kpis(df, table_name="Dataset")
 
     return KPIRecommendationResponse(
@@ -144,8 +154,12 @@ async def get_dataset_kpis(file_id: str):
 
 
 @router.get("/{file_id}/charts", response_model=ChartRecommendationResponse)
-async def get_dataset_charts(file_id: str):
-    df = get_dataset(file_id)
+async def get_dataset_charts(
+    file_id: str,
+    current_user: Optional[User] = Depends(get_optional_user),
+    db: Session = Depends(get_db)
+):
+    df = get_dataset(file_id, db=db, current_user=current_user)
     chart_result = recommend_charts(df)
 
     return ChartRecommendationResponse(
@@ -164,9 +178,11 @@ async def get_dataset_chart_data(
     aggregation: str = Query("SUM", description="Aggregation function: SUM, AVERAGE, COUNT, DISTINCTCOUNT, NONE"),
     chart_type: str = Query("bar", description="Chart type: bar, column, line, scatter, donut, table"),
     top_n: int | None = Query(default=None, description="Optional top N records limit"),
-    date_granularity: str | None = Query(default=None, description="Optional date granularity: year, month, day")
+    date_granularity: str | None = Query(default=None, description="Optional date granularity: year, month, day"),
+    current_user: Optional[User] = Depends(get_optional_user),
+    db: Session = Depends(get_db)
 ):
-    df = get_dataset(file_id)
+    df = get_dataset(file_id, db=db, current_user=current_user)
     chart_data = get_chart_data(
         df=df,
         x_axis=x_axis,
@@ -189,8 +205,12 @@ async def get_dataset_chart_data(
 
 
 @router.get("/{file_id}/target-candidates", response_model=TargetCandidatesResponse)
-async def get_dataset_target_candidates(file_id: str):
-    df = get_dataset(file_id)
+async def get_dataset_target_candidates(
+    file_id: str,
+    current_user: Optional[User] = Depends(get_optional_user),
+    db: Session = Depends(get_db)
+):
+    df = get_dataset(file_id, db=db, current_user=current_user)
     result = detect_ml_problem_hints(df)
 
     return TargetCandidatesResponse(
@@ -205,9 +225,11 @@ async def get_dataset_target_candidates(file_id: str):
 @router.get("/{file_id}/feature-candidates", response_model=FeatureCandidatesResponse)
 async def get_dataset_feature_candidates(
     file_id: str,
-    target: str = Query(..., description="Target column name to evaluate features for")
+    target: str = Query(..., description="Target column name to evaluate features for"),
+    current_user: Optional[User] = Depends(get_optional_user),
+    db: Session = Depends(get_db)
 ):
-    df = get_dataset(file_id)
+    df = get_dataset(file_id, db=db, current_user=current_user)
     result = evaluate_feature_candidates(df, target_col=target)
 
     return FeatureCandidatesResponse(
@@ -223,9 +245,11 @@ async def get_dataset_feature_candidates(
 async def get_dataset_model_recommendations(
     file_id: str,
     target: str = Query(..., description="Target column name to evaluate model recommendations for"),
-    features: str | None = None
+    features: str | None = None,
+    current_user: Optional[User] = Depends(get_optional_user),
+    db: Session = Depends(get_db)
 ):
-    df = get_dataset(file_id)
+    df = get_dataset(file_id, db=db, current_user=current_user)
 
     parsed_features: Optional[List[str]] = None
     if features:
@@ -256,7 +280,7 @@ async def train_dataset_model(
     current_user: Optional[User] = Depends(get_optional_user),
     db: Session = Depends(get_db)
 ):
-    df = get_dataset(file_id)
+    df = get_dataset(file_id, db=db, current_user=current_user)
     try:
         result = train_and_evaluate_model(
             file_id=file_id,

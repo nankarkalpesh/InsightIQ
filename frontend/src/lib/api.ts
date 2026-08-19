@@ -404,6 +404,9 @@ export async function uploadFile(file: File, sheetName?: string): Promise<Datase
     });
     return await handleResponse<DatasetMetadataResponse>(response);
   } catch (error) {
+    if (error instanceof ApiError) {
+      throw error;
+    }
     const isRender = API_BASE_URL.includes('onrender.com');
     const guidance = isRender
       ? 'Render free instances spin down after inactivity and take 30-50 seconds to wake up. Please click "Try Uploading Again" in a few seconds once the backend finishes waking up.'

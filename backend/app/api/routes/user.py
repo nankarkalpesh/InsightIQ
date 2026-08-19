@@ -62,12 +62,15 @@ def resume_user_dataset(
     try:
         df = get_dataset(dataset_id, db=db, current_user=current_user)
     except Exception as e:
-        if rec.file_path and os.path.exists(rec.file_path):
-            ext = rec.file_type.lower().lstrip(".")
+        try:
+            from app.core.storage import get_dataset_file_bytes, get_local_cache_path
             from app.ingestion.parser import parse_file
-            df = parse_file(rec.file_path, ext)
+            ext = rec.file_type.lower().lstrip(".")
+            get_dataset_file_bytes(file_id=rec.id, filename=rec.filename, user_id=rec.user_id, db=db)
+            local_cache = get_local_cache_path(rec.id, rec.filename, rec.user_id)
+            df = parse_file(local_cache, ext)
             store_dataset(dataset_id, df)
-        else:
+        except Exception:
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
                 detail="Dataset file is no longer available on server storage. Please re-upload your dataset."

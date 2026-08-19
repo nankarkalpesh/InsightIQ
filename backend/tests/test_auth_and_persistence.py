@@ -303,15 +303,14 @@ def test_persistent_storage_blob_hydration_and_groq_fallback(monkeypatch):
     assert o_data["health"]["total_rows"] == 3
     assert o_data["health"]["total_columns"] == 3
 
-    # 3. Verify Groq model candidates fallback chain contains only supported production models
+    # 3. Verify Groq model candidates fallback chain contains valid production Groq models
     import app.ai.ollama_client as oc
     oc._cached_working_groq_model = None
-    candidates = get_groq_model_candidates("openai/gpt-oss-120b")
+    candidates = get_groq_model_candidates("llama-3.3-70b-versatile")
     assert len(candidates) >= 2
-    assert "openai/gpt-oss-120b" in candidates
-    assert "openai/gpt-oss-20b" in candidates
-    for deprecated in ["llama-3.3-70b-versatile", "llama-3.1-8b-instant", "llama3-70b-8192", "mixtral-8x7b-32768"]:
-        assert deprecated not in candidates
+    assert "llama-3.3-70b-versatile" in candidates
+    assert "llama-3.1-8b-instant" in candidates
+    assert "mixtral-8x7b-32768" in candidates
 
 
 def test_access_token_expiration_and_refresh_success():

@@ -17,7 +17,7 @@ except ImportError:
 
 DEFAULT_OLLAMA_MODEL = os.getenv("OLLAMA_MODEL", "llama3.2:3b")
 DEFAULT_OLLAMA_HOST = os.getenv("OLLAMA_HOST", "http://localhost:11434")
-DEFAULT_GROQ_MODEL = os.getenv("GROQ_MODEL", "openai/gpt-oss-120b")
+DEFAULT_GROQ_MODEL = os.getenv("GROQ_MODEL", "llama-3.3-70b-versatile")
 
 SYSTEM_PROMPT = (
     "IDENTITY & TONE:\n"
@@ -133,8 +133,12 @@ def _prepare_messages_for_ollama(messages: List[Dict[str, Any]]) -> List[Dict[st
 
 
 GROQ_MODEL_FALLBACKS = [
-    "openai/gpt-oss-120b",
-    "openai/gpt-oss-20b",
+    "llama-3.3-70b-versatile",
+    "llama-3.1-8b-instant",
+    "llama-3.2-3b-preview",
+    "mixtral-8x7b-32768",
+    "gemma2-9b-it",
+    "deepseek-r1-distill-llama-70b"
 ]
 
 _cached_working_groq_model: Optional[str] = None
@@ -142,7 +146,7 @@ _cached_working_groq_model: Optional[str] = None
 
 def get_groq_model_candidates(model_arg: Optional[str] = None) -> List[str]:
     """Get list of Groq models to attempt in order of preference."""
-    env_default = os.getenv("GROQ_MODEL", "openai/gpt-oss-120b").strip()
+    env_default = os.getenv("GROQ_MODEL", DEFAULT_GROQ_MODEL).strip()
     candidates = []
     if model_arg and model_arg.strip():
         candidates.append(model_arg.strip())

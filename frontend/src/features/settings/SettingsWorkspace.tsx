@@ -56,7 +56,14 @@ export const SettingsWorkspace: React.FC<SettingsWorkspaceProps> = ({ onNavigate
       const keysToRemove: string[] = [];
       for (let i = 0; i < localStorage.length; i++) {
         const key = localStorage.key(i);
-        if (key && key.includes('_dataset_session')) {
+        if (
+          key && (
+            key.includes('_dataset_session') ||
+            key.includes('_dashboard_') ||
+            key.includes('_ds_store_') ||
+            key.includes('_chat_session_')
+          )
+        ) {
           keysToRemove.push(key);
         }
       }
