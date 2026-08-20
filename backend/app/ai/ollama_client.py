@@ -17,7 +17,7 @@ except ImportError:
 
 DEFAULT_OLLAMA_MODEL = os.getenv("OLLAMA_MODEL", "llama3.2:3b")
 DEFAULT_OLLAMA_HOST = os.getenv("OLLAMA_HOST", "http://localhost:11434")
-DEFAULT_GROQ_MODEL = os.getenv("GROQ_MODEL", "llama-3.3-70b-versatile")
+DEFAULT_GROQ_MODEL = os.getenv("GROQ_MODEL", "openai/gpt-oss-20b")
 
 SYSTEM_PROMPT = (
     "IDENTITY & TONE:\n"
@@ -133,8 +133,8 @@ def _prepare_messages_for_ollama(messages: List[Dict[str, Any]]) -> List[Dict[st
 
 
 GROQ_MODEL_FALLBACKS = [
-    "llama-3.3-70b-versatile",
-    "llama-3.1-8b-instant"
+    "openai/gpt-oss-20b",
+    "openai/gpt-oss-120b"
 ]
 
 _cached_working_groq_model: Optional[str] = None

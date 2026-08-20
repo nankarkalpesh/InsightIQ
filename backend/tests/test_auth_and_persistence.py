@@ -306,9 +306,9 @@ def test_persistent_storage_blob_hydration_and_groq_fallback(monkeypatch):
     # 3. Verify Groq model candidates fallback chain contains only active production Groq models
     import app.ai.ollama_client as oc
     oc._cached_working_groq_model = None
-    candidates = get_groq_model_candidates("llama-3.3-70b-versatile")
-    assert candidates == ["llama-3.3-70b-versatile", "llama-3.1-8b-instant"]
-    for deprecated in ["deepseek-r1-distill-llama-70b", "llama-3.2-3b-preview", "mixtral-8x7b-32768", "gemma2-9b-it"]:
+    candidates = get_groq_model_candidates("openai/gpt-oss-20b")
+    assert candidates == ["openai/gpt-oss-20b", "openai/gpt-oss-120b"]
+    for deprecated in ["llama-3.3-70b-versatile", "llama-3.1-8b-instant", "llama3-8b-8192", "deepseek-r1-distill-llama-70b", "llama-3.2-3b-preview", "mixtral-8x7b-32768", "gemma2-9b-it"]:
         assert deprecated not in candidates
 
 
@@ -450,16 +450,16 @@ def test_groq_model_fallbacks_and_error_handling():
     import app.ai.ollama_client as oc
     from unittest.mock import patch, MagicMock
 
-    # 1. Default model is llama-3.3-70b-versatile
-    assert oc.DEFAULT_GROQ_MODEL == "llama-3.3-70b-versatile"
+    # 1. Default model is openai/gpt-oss-20b
+    assert oc.DEFAULT_GROQ_MODEL == "openai/gpt-oss-20b"
 
     # 2. Fallback candidate list contains only active approved models
     oc._cached_working_groq_model = None
     candidates = oc.get_groq_model_candidates()
-    assert candidates == ["llama-3.3-70b-versatile", "llama-3.1-8b-instant"]
+    assert candidates == ["openai/gpt-oss-20b", "openai/gpt-oss-120b"]
 
     # 3. Deprecated model IDs are not present
-    for deprecated in ["deepseek-r1-distill-llama-70b", "llama-3.2-3b-preview", "mixtral-8x7b-32768", "gemma2-9b-it"]:
+    for deprecated in ["llama-3.3-70b-versatile", "llama-3.1-8b-instant", "llama3-8b-8192", "deepseek-r1-distill-llama-70b", "llama-3.2-3b-preview", "mixtral-8x7b-32768", "gemma2-9b-it"]:
         assert deprecated not in candidates
 
     # 4. HTTP 401 Invalid API Key does NOT trigger model fallback (returns immediate auth error)
@@ -488,7 +488,7 @@ def test_groq_model_fallbacks_and_error_handling():
     with patch("httpx.Client.post", side_effect=[mock_400_decommissioned, mock_200_success]) as mock_post:
         res = oc.chat_groq(messages=[{"role": "user", "content": "hello"}], groq_api_key="gsk_valid_mock_key")
         assert res.get("content") == "Fallback model response"
-        assert res.get("active_model") == "llama-3.1-8b-instant"
+        assert res.get("active_model") == "openai/gpt-oss-120b"
         assert mock_post.call_count == 2
 
     # 7. If all active models fail, return a clear Groq unavailable error
