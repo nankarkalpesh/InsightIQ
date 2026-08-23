@@ -308,7 +308,7 @@ export const ModelSelector: React.FC<ModelSelectorProps> = ({
                     <span>Key Advantages</span>
                   </div>
                   <ul className="space-y-1">
-                    {model.advantages.map((adv, i) => (
+                    {(model.advantages || []).map((adv, i) => (
                       <li key={i} className="flex items-start gap-2 text-caption text-body">
                         <CheckCircle2 className="w-3.5 h-3.5 text-emerald-500 shrink-0 mt-0.5" />
                         <span>{adv}</span>
@@ -324,7 +324,7 @@ export const ModelSelector: React.FC<ModelSelectorProps> = ({
                     <span>Limitations & Trade-offs</span>
                   </div>
                   <ul className="space-y-1">
-                    {model.limitations.map((lim, i) => (
+                    {(model.limitations || []).map((lim, i) => (
                       <li key={i} className="flex items-start gap-2 text-caption text-muted">
                         <span className="w-1.5 h-1.5 rounded-full bg-amber-500 shrink-0 mt-1.5" />
                         <span>{lim}</span>

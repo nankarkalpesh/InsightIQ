@@ -65,7 +65,7 @@ export const PredictionPlayground: React.FC<PredictionPlaygroundProps> = ({
 
           // Initialize default inputs
           const initInputs: Record<string, string> = {};
-          const trainedFeatures = trainingResult.feature_importance.map((f) => f.feature);
+          const trainedFeatures = (trainingResult.feature_importance || []).map((f) => f.feature);
 
           trainedFeatures.forEach((featName) => {
             const meta = map[featName];
@@ -93,7 +93,7 @@ export const PredictionPlayground: React.FC<PredictionPlaygroundProps> = ({
           console.warn('Failed to load feature candidates metadata:', err);
           // Fallback initialization
           const initInputs: Record<string, string> = {};
-          trainingResult.feature_importance.forEach((f) => {
+          (trainingResult.feature_importance || []).forEach((f) => {
             initInputs[f.feature] = '';
           });
           setInputs(initInputs);
@@ -132,7 +132,7 @@ export const PredictionPlayground: React.FC<PredictionPlaygroundProps> = ({
   }
 
   const { training_run_id, target, model_name, problem_type, feature_importance } = trainingResult;
-  const trainedFeatures = feature_importance.map((f) => f.feature);
+  const trainedFeatures = (feature_importance || []).map((f) => f.feature);
   const isClassification = problem_type.includes('classification');
 
   const handleInputChange = (featureName: string, value: string) => {

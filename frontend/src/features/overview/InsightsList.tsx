@@ -31,7 +31,7 @@ export const InsightsList: React.FC<InsightsListProps> = ({ insights }) => {
       </div>
 
       <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-        {insights.map((text, idx) => (
+        {(Array.isArray(insights) ? insights : []).map((text, idx) => (
           <div
             key={idx}
             className="flex items-start gap-3 p-3.5 rounded-xl border border-hairline bg-canvas hover:border-primary/30 transition-colors"
