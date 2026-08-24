@@ -69,11 +69,11 @@ export const VisualizationStudio: React.FC<VisualizationStudioProps> = ({ onNavi
     const query = searchQuery.toLowerCase().trim();
     return chartResponse.charts.filter(
       (c) =>
-        c.title.toLowerCase().includes(query) ||
-        c.x_axis.toLowerCase().includes(query) ||
-        c.y_axis.toLowerCase().includes(query) ||
-        c.chart_type.toLowerCase().includes(query) ||
-        c.reason.toLowerCase().includes(query)
+        (c.title || '').toLowerCase().includes(query) ||
+        (c.x_axis || '').toLowerCase().includes(query) ||
+        (c.y_axis || '').toLowerCase().includes(query) ||
+        (c.chart_type || '').toLowerCase().includes(query) ||
+        (c.reason || '').toLowerCase().includes(query)
     );
   }, [chartResponse, searchQuery]);
 

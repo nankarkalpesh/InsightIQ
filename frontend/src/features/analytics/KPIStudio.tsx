@@ -75,11 +75,11 @@ export const KPIStudio: React.FC<KPIStudioProps> = ({ onNavigateToUpload }) => {
     const query = searchQuery.toLowerCase().trim();
     return kpiResponse.kpis.filter(
       (kpi) =>
-        kpi.kpi_name.toLowerCase().includes(query) ||
-        kpi.reason.toLowerCase().includes(query) ||
-        kpi.definition.toLowerCase().includes(query) ||
-        kpi.dax.toLowerCase().includes(query) ||
-        kpi.required_columns.some((c) => c.toLowerCase().includes(query))
+        (kpi.kpi_name || '').toLowerCase().includes(query) ||
+        (kpi.reason || '').toLowerCase().includes(query) ||
+        (kpi.definition || '').toLowerCase().includes(query) ||
+        (kpi.dax || '').toLowerCase().includes(query) ||
+        (kpi.required_columns || []).some((c) => (c || '').toLowerCase().includes(query))
     );
   }, [kpiResponse, searchQuery]);
 

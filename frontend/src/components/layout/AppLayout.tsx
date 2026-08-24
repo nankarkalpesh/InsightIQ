@@ -15,6 +15,7 @@ import { MyDatasets } from '../../features/auth/MyDatasets';
 import { useDataset } from '../../store/datasetStore';
 import { useAuth } from '../../store/authStore';
 import { BrandLogo } from '../icons/BrandLogo';
+import { ErrorBoundary } from '../common/ErrorBoundary';
 
 interface AppLayoutProps {
   children?: React.ReactNode;
@@ -134,7 +135,9 @@ export const AppLayout: React.FC<AppLayoutProps> = ({ children }) => {
 
         {/* Scrollable content view */}
         <main className="flex-1 overflow-y-auto p-4 md:p-6">
-          {renderContent()}
+          <ErrorBoundary>
+            {renderContent()}
+          </ErrorBoundary>
         </main>
       </div>
     </div>

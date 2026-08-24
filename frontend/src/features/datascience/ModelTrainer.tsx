@@ -275,7 +275,7 @@ export const ModelTrainer: React.FC<ModelTrainerProps> = ({
     data_quality_note,
   } = trainingResult;
 
-  const isClassification = problem_type.includes('classification');
+  const isClassification = problem_type ? problem_type.includes('classification') : false;
 
   return (
     <div className="w-full space-y-6 max-w-5xl mx-auto">

@@ -39,7 +39,7 @@ export const SchemaTable: React.FC<SchemaTableProps> = ({ schema }) => {
   }, [schema, sortField, sortOrder]);
 
   const getDtypeBadgeStyle = (dtype: string) => {
-    const lower = dtype.toLowerCase();
+    const lower = (dtype || '').toLowerCase();
     if (lower.includes('int') || lower.includes('float') || lower.includes('number')) {
       return 'bg-blue-500/10 text-blue-600 dark:text-blue-400 border-blue-500/20';
     }

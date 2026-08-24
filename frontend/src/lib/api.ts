@@ -281,7 +281,8 @@ function getErrorGuidance(errorCode: string, message: string): string {
     case 'FILE_NOT_FOUND':
       return 'The uploaded file reference expired. Please re-upload your dataset.';
     default:
-      if (message.toLowerCase().includes('corrupted') || message.toLowerCase().includes('parse')) {
+      const safeMsg = (message || '').toLowerCase();
+      if (safeMsg.includes('corrupted') || safeMsg.includes('parse')) {
         return 'Try re-exporting your file in a clean format and uploading again.';
       }
       return 'Please verify your file format and content, then try again.';

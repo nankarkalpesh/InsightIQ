@@ -7,7 +7,7 @@ interface InsightsListProps {
 
 export const InsightsList: React.FC<InsightsListProps> = ({ insights }) => {
   const getInsightIcon = (text: string) => {
-    const lower = text.toLowerCase();
+    const lower = (text || '').toLowerCase();
     if (lower.includes('quality score')) return <Sparkles className="w-4 h-4 text-primary shrink-0" />;
     if (lower.includes('missing') || lower.includes('null')) return <AlertTriangle className="w-4 h-4 text-amber-500 shrink-0" />;
     if (lower.includes('duplicate')) return <Layers className="w-4 h-4 text-orange-500 shrink-0" />;

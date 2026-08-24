@@ -133,7 +133,7 @@ export const PredictionPlayground: React.FC<PredictionPlaygroundProps> = ({
 
   const { training_run_id, target, model_name, problem_type, feature_importance } = trainingResult;
   const trainedFeatures = (feature_importance || []).map((f) => f.feature);
-  const isClassification = problem_type.includes('classification');
+  const isClassification = problem_type ? problem_type.includes('classification') : false;
 
   const handleInputChange = (featureName: string, value: string) => {
     setInputs((prev) => ({

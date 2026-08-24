@@ -7,19 +7,22 @@ import { DatasetProvider } from './store/datasetStore'
 import { DashboardProvider } from './store/dashboardStore'
 import { AuthProvider } from './store/authStore'
 import { LLMProviderStore } from './store/llmStore'
+import { ErrorBoundary } from './components/common/ErrorBoundary'
 
 createRoot(document.getElementById('root')!).render(
   <StrictMode>
-    <ThemeProvider>
-      <AuthProvider>
-        <DatasetProvider>
-          <DashboardProvider>
-            <LLMProviderStore>
-              <App />
-            </LLMProviderStore>
-          </DashboardProvider>
-        </DatasetProvider>
-      </AuthProvider>
-    </ThemeProvider>
+    <ErrorBoundary>
+      <ThemeProvider>
+        <AuthProvider>
+          <DatasetProvider>
+            <DashboardProvider>
+              <LLMProviderStore>
+                <App />
+              </LLMProviderStore>
+            </DashboardProvider>
+          </DatasetProvider>
+        </AuthProvider>
+      </ThemeProvider>
+    </ErrorBoundary>
   </StrictMode>,
 )

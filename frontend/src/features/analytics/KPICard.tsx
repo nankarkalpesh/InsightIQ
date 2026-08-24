@@ -55,7 +55,7 @@ export const KPICard: React.FC<KPICardProps> = ({ kpi, onAddToDashboard }) => {
     if (val === null || val === undefined) return 'N/A';
     if (typeof val === 'string') return val;
 
-    const lowerName = name.toLowerCase();
+    const lowerName = (name || '').toLowerCase();
 
     // Percentage / Ratio formatting
     if (lowerName.includes('margin') || lowerName.includes('ratio') || lowerName.includes('rate')) {
