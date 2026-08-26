@@ -67,7 +67,7 @@ def test_ollama_unreachable_error_handling(mock_ollama_client):
     mock_inst.chat.side_effect = httpx.ConnectError("Failed to connect to host")
     mock_ollama_client.return_value = mock_inst
 
-    result = chat(messages=[{"role": "user", "content": "Test"}])
+    result = chat(messages=[{"role": "user", "content": "Test"}], provider="ollama")
 
     assert isinstance(result, dict)
     assert result.get("error") == "ollama_unavailable"

@@ -42,28 +42,147 @@ class OllamaUnavailableError(Exception):
     pass
 
 
-def get_available_providers(groq_api_key: Optional[str] = None) -> List[Dict[str, Any]]:
+def _match_ollama_model(required_model: str, installed_models: List[str]) -> bool:
+    """Check if required model tag matches any installed Ollama model."""
+    if not required_model or not installed_models:
+        return False
+    req_clean = required_model.lower().strip()
+    req_base = req_clean.split(":")[0]
+    for m in installed_models:
+        m_clean = m.lower().strip()
+        m_base = m_clean.split(":")[0]
+        if req_clean == m_clean:
+            return True
+        if req_clean in m_clean or m_clean in req_clean:
+            return True
+        if req_base and req_base == m_base:
+            return True
+    return False
+
+
+def check_ollama_status(host: Optional[str] = None) -> Dict[str, Any]:
+    """
+    Safely inspect local Ollama server reachability and model availability.
+    Returns structured status: ready | model_missing | unreachable | detection_unavailable
+    """
+    target_host = host or os.getenv("OLLAMA_HOST", DEFAULT_OLLAMA_HOST)
+    required_model = os.getenv("OLLAMA_MODEL", DEFAULT_OLLAMA_MODEL).strip()
+
+    # 1. Direct HTTP GET /api/tags check
+    try:
+        url = f"{target_host.rstrip('/')}/api/tags"
+        with httpx.Client(timeout=1.0) as client:
+            resp = client.get(url)
+            if resp.status_code == 200:
+                data = resp.json()
+                raw_models = data.get("models", [])
+                installed = [m.get("name", "") for m in raw_models if isinstance(m, dict)]
+                if _match_ollama_model(required_model, installed):
+                    return {
+                        "reachable": True,
+                        "model_available": True,
+                        "status": "ready",
+                        "model": required_model,
+                        "details": f"Local Ollama LLM ({required_model} @ {target_host})"
+                    }
+                else:
+                    return {
+                        "reachable": True,
+                        "model_available": False,
+                        "status": "model_missing",
+                        "model": required_model,
+                        "details": f"Ollama is running, but required model '{required_model}' is not installed locally"
+                    }
+    except Exception as err:
+        logger.debug(f"Ollama HTTP health check failed for {target_host}: {err}")
+
+    # 2. SDK check fallback if installed
+    if ollama is not None:
+        try:
+            cli = ollama.Client(host=target_host)
+            res = cli.list()
+            raw_models = getattr(res, "models", []) or (res.get("models", []) if isinstance(res, dict) else [])
+            installed = []
+            for m in raw_models:
+                m_name = getattr(m, "name", None) or (m.get("name") if isinstance(m, dict) else str(m))
+                if m_name:
+                    installed.append(m_name)
+            if _match_ollama_model(required_model, installed):
+                return {
+                    "reachable": True,
+                    "model_available": True,
+                    "status": "ready",
+                    "model": required_model,
+                    "details": f"Local Ollama LLM ({required_model} @ {target_host})"
+                }
+            else:
+                return {
+                    "reachable": True,
+                    "model_available": False,
+                    "status": "model_missing",
+                    "model": required_model,
+                    "details": f"Ollama is running, but required model '{required_model}' is not installed locally"
+                }
+        except Exception as err:
+            logger.debug(f"Ollama SDK health check failed for {target_host}: {err}")
+
+    return {
+        "reachable": False,
+        "model_available": False,
+        "status": "unreachable",
+        "model": required_model,
+        "details": f"Local Ollama server is not currently reachable at {target_host}"
+    }
+
+
+def get_available_providers(
+    groq_api_key: Optional[str] = None,
+    is_user_groq_key: bool = False,
+    host: Optional[str] = None
+) -> List[Dict[str, Any]]:
     """
     Return list of LLM providers and their server-side/user configuration status.
+    Secrets are NEVER returned in details or metadata fields.
     """
-    effective_groq_key = (groq_api_key or os.getenv("GROQ_API_KEY", "")).strip()
-    groq_configured = bool(effective_groq_key)
+    env_groq_key = os.getenv("GROQ_API_KEY", "").strip()
+    effective_groq_key = (groq_api_key or env_groq_key).strip()
 
+    if groq_api_key and groq_api_key.strip():
+        key_source = "user"
+    elif env_groq_key:
+        key_source = "default"
+    else:
+        key_source = "none"
+
+    groq_configured = bool(effective_groq_key)
     active_groq_name = _cached_working_groq_model or os.getenv("GROQ_MODEL", DEFAULT_GROQ_MODEL)
+
+    if groq_configured:
+        if key_source == "user":
+            groq_details = f"Groq Cloud API ({active_groq_name}) - Using your personal API key"
+        else:
+            groq_details = f"Groq Cloud API ({active_groq_name}) - Using InsightIQ default API access"
+    else:
+        groq_details = "Groq API key is not configured"
+
+    ollama_info = check_ollama_status(host=host)
+
     return [
         {
             "id": "ollama",
             "name": "Local Ollama",
-            "configured": True,
-            "status": "ready",
-            "details": f"Local Ollama LLM ({DEFAULT_OLLAMA_MODEL} @ {DEFAULT_OLLAMA_HOST})"
+            "configured": ollama_info.get("status") == "ready",
+            "status": ollama_info.get("status", "unreachable"),
+            "model": ollama_info.get("model", DEFAULT_OLLAMA_MODEL),
+            "details": ollama_info.get("details", "")
         },
         {
             "id": "groq",
             "name": "Groq (Cloud)",
             "configured": groq_configured,
             "status": "ready" if groq_configured else "not_configured",
-            "details": f"Groq Cloud API ({active_groq_name})" if groq_configured else "GROQ_API_KEY environment variable is not set on the server"
+            "key_source": key_source,
+            "details": groq_details
         }
     ]
 
@@ -160,16 +279,22 @@ def chat_groq(
     messages: List[Dict[str, Any]],
     model: Optional[str] = None,
     tools: Optional[List[Dict[str, Any]]] = None,
-    groq_api_key: Optional[str] = None
+    groq_api_key: Optional[str] = None,
+    is_user_key: bool = False
 ) -> Dict[str, Any]:
-    """Execute chat request against Groq Cloud API with automatic model fallback."""
+    """Execute chat request against Groq Cloud API with automatic model fallback and structured error categorization."""
     global _cached_working_groq_model
-    groq_key = (groq_api_key or os.getenv("GROQ_API_KEY", "")).strip()
+    env_key = os.getenv("GROQ_API_KEY", "").strip()
+    groq_key = (groq_api_key or env_key).strip()
+
     if not groq_key:
         return {
             "error": "groq_unavailable",
             "message": "GROQ_API_KEY environment variable or user API key is not set."
         }
+
+    # Determine key source if not explicitly passed
+    user_key_active = is_user_key or (bool(groq_api_key) and groq_api_key.strip() != env_key)
 
     prepared_messages = _prepare_messages_for_groq(messages)
     headers = {
@@ -179,6 +304,7 @@ def chat_groq(
 
     candidates = get_groq_model_candidates(model)
     last_error_msg = "Unknown error"
+    hit_rate_limit = False
 
     for candidate_model in candidates:
         payload: Dict[str, Any] = {
@@ -198,13 +324,25 @@ def chat_groq(
                     # HTTP 401 Invalid API key -> Immediate auth error, DO NOT fallback across models
                     if resp.status_code == 401 or "invalid_api_key" in resp_lower or "invalid api key" in resp_lower:
                         return {
-                            "error": "groq_unavailable",
-                            "message": "Invalid Groq API key provided. Please verify your GROQ_API_KEY environment variable."
+                            "error": "groq_invalid_key",
+                            "message": "Invalid Groq API key provided. Please verify your Groq API key in Settings."
                         }
 
-                    # Model-specific errors (HTTP 400 decommissioned, 404 not found, 429 rate limit) -> fallback to next candidate
+                    # Rate / Quota Limit (HTTP 429 or quota message)
                     if (
-                        resp.status_code in (400, 404, 429) or
+                        resp.status_code == 429 or
+                        "rate_limit" in resp_lower or
+                        "quota_exceeded" in resp_lower or
+                        "limit_exceeded" in resp_lower or
+                        "daily_limit" in resp_lower
+                    ):
+                        hit_rate_limit = True
+                        logger.warning(f"[GROQ FALLBACK] Model '{candidate_model}' hit rate/quota limit. Trying fallback model...")
+                        continue
+
+                    # Model-specific errors (HTTP 400 decommissioned, 404 not found) -> fallback to next candidate
+                    if (
+                        resp.status_code in (400, 404) or
                         "model_not_found" in resp_lower or
                         "does not exist" in resp_lower or
                         "decommissioned" in resp_lower
@@ -213,7 +351,7 @@ def chat_groq(
                         continue
 
                     return {
-                        "error": "groq_unavailable",
+                        "error": "groq_provider_error",
                         "message": last_error_msg
                     }
 
@@ -221,7 +359,7 @@ def chat_groq(
                 choices = data.get("choices", [])
                 if not choices:
                     return {
-                        "error": "groq_unavailable",
+                        "error": "groq_provider_error",
                         "message": "Groq returned empty response choices."
                     }
 
@@ -258,6 +396,18 @@ def chat_groq(
         except Exception as err:
             last_error_msg = f"Groq connection error: {str(err)}"
             logger.warning(f"[GROQ FALLBACK] Error connecting with model '{candidate_model}': {err}")
+
+    if hit_rate_limit:
+        if user_key_active:
+            return {
+                "error": "groq_user_key_limit_reached",
+                "message": "Your personal Groq API key has reached its usage limit. Please check your Groq account quota."
+            }
+        else:
+            return {
+                "error": "groq_default_limit_reached",
+                "message": "InsightIQ's default Groq API access is currently unavailable due to its usage limit. Add your own Groq API key in Settings to continue using Groq Cloud."
+            }
 
     return {
         "error": "groq_unavailable",

@@ -23,17 +23,34 @@ class LLMProviderUpdateRequest(BaseModel):
     groq_api_key: Optional[str] = None
 
 
+from typing import Optional, List, Dict, Any, Tuple
+
+def get_effective_groq_key_info(
+    current_user: Optional[User] = None,
+    session_id: Optional[str] = None
+) -> Tuple[Optional[str], str]:
+    """
+    Resolve effective Groq API key and key source ('user', 'default', 'none').
+    Never returns secret keys to client callers.
+    """
+    if current_user and current_user.groq_api_key and current_user.groq_api_key.strip():
+        return current_user.groq_api_key.strip(), "user"
+    guest_key = get_guest_groq_api_key(session_id)
+    if guest_key and guest_key.strip():
+        return guest_key.strip(), "user"
+    env_key = os.getenv("GROQ_API_KEY", "").strip()
+    if env_key:
+        return env_key, "default"
+    return None, "none"
+
+
 def get_effective_groq_key(
     current_user: Optional[User] = None,
     session_id: Optional[str] = None
 ) -> Optional[str]:
-    """Resolve effective Groq API key from user DB model, guest session, or server environment."""
-    if current_user and current_user.groq_api_key:
-        return current_user.groq_api_key.strip()
-    guest_key = get_guest_groq_api_key(session_id)
-    if guest_key:
-        return guest_key.strip()
-    return os.getenv("GROQ_API_KEY", "").strip() or None
+    """Resolve effective Groq API key string for internal backend execution."""
+    key, _ = get_effective_groq_key_info(current_user=current_user, session_id=session_id)
+    return key
 
 
 def get_active_provider_for_request(
@@ -42,10 +59,10 @@ def get_active_provider_for_request(
 ) -> str:
     """
     Resolve currently active LLM provider for authenticated user or guest session.
-    Fallbacks to env var LLM_PROVIDER or 'ollama' if configured option is unavailable.
+    Fallbacks safely if preferred provider is not configured.
     """
-    effective_groq_key = get_effective_groq_key(current_user=current_user, session_id=session_id)
-    available_providers = get_available_providers(groq_api_key=effective_groq_key)
+    key, source = get_effective_groq_key_info(current_user=current_user, session_id=session_id)
+    available_providers = get_available_providers(groq_api_key=key, is_user_groq_key=(source == "user"))
     configured_ids = {p["id"] for p in available_providers if p.get("configured")}
 
     # 1. Check logged-in user preference
@@ -61,11 +78,18 @@ def get_active_provider_for_request(
 
     # 3. Check environment variable fallback
     if not candidate:
-        candidate = os.getenv("LLM_PROVIDER", "ollama").lower().strip()
+        candidate = os.getenv("LLM_PROVIDER", "").lower().strip()
 
-    # If candidate provider is not configured on server (e.g. Groq without API key), fallback to ollama
-    if candidate not in configured_ids:
-        candidate = "ollama"
+    # Fallback to configured provider if candidate is groq but unconfigured
+    if candidate == "groq" and "groq" not in configured_ids:
+        if "ollama" in configured_ids:
+            return "ollama"
+        return "groq"
+
+    if not candidate:
+        if "groq" in configured_ids:
+            return "groq"
+        return "ollama"
 
     return candidate
 
@@ -77,15 +101,17 @@ async def get_llm_provider_settings(
 ):
     """
     Retrieve active LLM provider choice and server-side available providers.
+    Secrets (API keys) are NEVER exposed in this endpoint response.
     """
-    effective_groq_key = get_effective_groq_key(current_user=current_user, session_id=x_session_id)
-    providers = get_available_providers(groq_api_key=effective_groq_key)
+    key, source = get_effective_groq_key_info(current_user=current_user, session_id=x_session_id)
+    providers = get_available_providers(groq_api_key=key, is_user_groq_key=(source == "user"))
     active_provider = get_active_provider_for_request(current_user=current_user, session_id=x_session_id)
 
     return {
         "active_provider": active_provider,
         "providers": providers,
-        "has_custom_groq_key": bool(effective_groq_key)
+        "has_custom_groq_key": (source == "user"),
+        "groq_key_source": source
     }
 
 
@@ -108,8 +134,8 @@ async def update_llm_provider_setting(
             current_user.groq_api_key = clean_key
         set_guest_groq_api_key(clean_key, session_id=x_session_id)
 
-    effective_groq_key = get_effective_groq_key(current_user=current_user, session_id=x_session_id)
-    providers = get_available_providers(groq_api_key=effective_groq_key)
+    key, source = get_effective_groq_key_info(current_user=current_user, session_id=x_session_id)
+    providers = get_available_providers(groq_api_key=key, is_user_groq_key=(source == "user"))
     provider_map = {p["id"]: p for p in providers}
 
     if target not in provider_map:
@@ -119,9 +145,10 @@ async def update_llm_provider_setting(
         )
 
     if not provider_map[target].get("configured", False):
+        prov_details = provider_map[target].get('details', '')
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail=f"Provider '{target}' is not configured on the server ({provider_map[target].get('details', '')})."
+            detail=f"Provider '{target}' is not configured or unavailable on the server ({prov_details})."
         )
 
     # Persist choice

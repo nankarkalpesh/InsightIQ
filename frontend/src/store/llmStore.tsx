@@ -8,6 +8,8 @@ import {
 export interface LLMProviderContextType {
   activeProvider: string;
   providers: LLMProviderItem[];
+  hasCustomGroqKey: boolean;
+  groqKeySource: 'user' | 'default' | 'none';
   isLoading: boolean;
   error: string | null;
   refreshSettings: () => Promise<void>;
@@ -19,6 +21,8 @@ export const LLMProviderContext = createContext<LLMProviderContextType | undefin
 export const LLMProviderStore: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const [activeProvider, setActiveProviderState] = useState<string>('ollama');
   const [providers, setProviders] = useState<LLMProviderItem[]>([]);
+  const [hasCustomGroqKey, setHasCustomGroqKey] = useState<boolean>(false);
+  const [groqKeySource, setGroqKeySource] = useState<'user' | 'default' | 'none'>('none');
   const [isLoading, setIsLoading] = useState<boolean>(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -29,6 +33,8 @@ export const LLMProviderStore: React.FC<{ children: React.ReactNode }> = ({ chil
       const data = await fetchLLMProviderSettings();
       setActiveProviderState(data.active_provider || 'ollama');
       setProviders(data.providers || []);
+      setHasCustomGroqKey(Boolean(data.has_custom_groq_key));
+      setGroqKeySource(data.groq_key_source || (data.has_custom_groq_key ? 'user' : 'none'));
     } catch (err: any) {
       console.error('Failed to fetch LLM provider settings:', err);
       setError(err?.message || 'Failed to load LLM provider settings');
@@ -57,6 +63,8 @@ export const LLMProviderStore: React.FC<{ children: React.ReactNode }> = ({ chil
       value={{
         activeProvider,
         providers,
+        hasCustomGroqKey,
+        groqKeySource,
         isLoading,
         error,
         refreshSettings,

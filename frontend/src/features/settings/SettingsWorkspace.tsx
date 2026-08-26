@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState } from 'react';
 import {
   Database,
   Sun,
@@ -26,30 +26,6 @@ export const SettingsWorkspace: React.FC<SettingsWorkspaceProps> = ({ onNavigate
   const [showClearConfirm, setShowClearConfirm] = useState(false);
   const [providerError, setProviderError] = useState<string | null>(null);
   const [isUpdatingProvider, setIsUpdatingProvider] = useState<boolean>(false);
-  const [ollamaStatus, setOllamaStatus] = useState<'checking' | 'ready' | 'error'>('checking');
-  const [ollamaDetails, setOllamaDetails] = useState<string>('Checking local server...');
-
-  const checkOllamaHealth = async () => {
-    setOllamaStatus('checking');
-    const apiBase = import.meta.env.VITE_API_URL || 'http://localhost:8000';
-    try {
-      const res = await fetch(`${apiBase}/api/health`);
-      if (res.ok) {
-        setOllamaStatus('ready');
-        setOllamaDetails('Ollama Connected (Model: llama3.2:3b @ http://localhost:11434)');
-      } else {
-        setOllamaStatus('ready');
-        setOllamaDetails(`Backend online @ ${apiBase}`);
-      }
-    } catch {
-      setOllamaStatus('error');
-      setOllamaDetails(`Unable to connect to backend server at ${apiBase}`);
-    }
-  };
-
-  useEffect(() => {
-    checkOllamaHealth();
-  }, []);
 
   const handleClearSessionConfirmed = () => {
     try {
@@ -210,15 +186,17 @@ export const SettingsWorkspace: React.FC<SettingsWorkspaceProps> = ({ onNavigate
             </div>
             <div>
               <h2 className="text-base font-semibold text-ink">AI Assistant & LLM Engine</h2>
-              <p className="text-xs text-muted">Select active LLM backend provider for Data Chat & Tool Calling</p>
+              <p className="text-xs text-muted">Select active LLM provider for Data Chat & Tool Calling</p>
             </div>
           </div>
           <button
             onClick={() => refreshSettings()}
-            className="p-2 rounded-lg text-muted hover:text-ink hover:bg-surface-soft transition-colors cursor-pointer"
+            disabled={isLLMLoading}
+            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-surface-soft hover:bg-surface-hover text-ink text-xs font-semibold border border-hairline transition-colors cursor-pointer disabled:opacity-50"
             title="Refresh LLM Provider Status"
           >
-            <RefreshCw className={`w-4 h-4 ${isLLMLoading ? 'animate-spin text-primary' : ''}`} />
+            <RefreshCw className={`w-3.5 h-3.5 ${isLLMLoading ? 'animate-spin text-primary' : ''}`} />
+            <span>{isLLMLoading ? 'Checking...' : 'Refresh Status'}</span>
           </button>
         </div>
 
@@ -228,23 +206,12 @@ export const SettingsWorkspace: React.FC<SettingsWorkspaceProps> = ({ onNavigate
           </div>
         )}
 
-        {/* Local Health Status Banner */}
-        <div className="flex items-center gap-2 px-3.5 py-2 rounded-xl bg-surface-soft/60 border border-hairline text-xs">
-          {ollamaStatus === 'ready' ? (
-            <CheckCircle2 className="w-4 h-4 text-emerald-500 shrink-0" />
-          ) : ollamaStatus === 'checking' ? (
-            <RefreshCw className="w-4 h-4 text-primary animate-spin shrink-0" />
-          ) : (
-            <ShieldAlert className="w-4 h-4 text-amber-500 shrink-0" />
-          )}
-          <span className="text-muted font-medium">Engine Status:</span>
-          <span className="text-ink font-mono text-[11px] truncate">{ollamaDetails}</span>
-        </div>
-
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-1">
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 pt-1">
           {providers.map((p) => {
             const isActive = activeProvider === p.id;
             const isConfigured = p.configured;
+            const isGroq = p.id === 'groq';
+            const isOllama = p.id === 'ollama';
 
             const handleSelect = async () => {
               if (!isConfigured || isActive || isUpdatingProvider) return;
@@ -259,6 +226,56 @@ export const SettingsWorkspace: React.FC<SettingsWorkspaceProps> = ({ onNavigate
               }
             };
 
+            // Provider-specific status labels & descriptions
+            let statusText = 'Not configured';
+            let statusColor = 'text-muted';
+            let dotColor = 'bg-red-400';
+            let helperNote: string | null = null;
+
+            if (isGroq) {
+              if (p.status === 'ready' || isConfigured) {
+                statusText = 'Connected & Ready';
+                statusColor = 'text-emerald-600 dark:text-emerald-400';
+                dotColor = 'bg-emerald-500 animate-pulse';
+                helperNote = p.key_source === 'user' ? 'Using your personal API key' : 'Using InsightIQ default API access';
+              } else if (p.status === 'default_limit_reached') {
+                statusText = 'Default API limit reached';
+                statusColor = 'text-amber-600 dark:text-amber-400';
+                dotColor = 'bg-amber-500';
+                helperNote = 'Add your own Groq API key to continue using Groq Cloud.';
+              } else if (p.status === 'user_key_limit_reached') {
+                statusText = 'Personal API key limit reached';
+                statusColor = 'text-amber-600 dark:text-amber-400';
+                dotColor = 'bg-amber-500';
+                helperNote = 'Your configured API key has exceeded its quota limit.';
+              } else {
+                statusText = 'Key not configured';
+                helperNote = 'Add an API key below to enable Groq Cloud.';
+              }
+            } else if (isOllama) {
+              if (p.status === 'ready' || isConfigured) {
+                statusText = 'Connected & Ready';
+                statusColor = 'text-emerald-600 dark:text-emerald-400';
+                dotColor = 'bg-emerald-500 animate-pulse';
+                helperNote = `Ollama is running (Model: ${p.model || 'llama3.2:3b'})`;
+              } else if (p.status === 'model_missing') {
+                statusText = 'Required model missing';
+                statusColor = 'text-amber-600 dark:text-amber-400';
+                dotColor = 'bg-amber-500';
+                helperNote = `The required Ollama model (${p.model || 'llama3.2:3b'}) is not installed on this computer.`;
+              } else if (p.status === 'unreachable' || p.status === 'not_running') {
+                statusText = 'Ollama unavailable';
+                statusColor = 'text-red-500';
+                dotColor = 'bg-red-400';
+                helperNote = 'Ollama is not currently reachable on this computer. Start Ollama locally, then click Refresh Status.';
+              } else if (p.status === 'detection_unavailable') {
+                statusText = 'Detection unavailable';
+                statusColor = 'text-amber-600 dark:text-amber-400';
+                dotColor = 'bg-amber-500';
+                helperNote = 'Local status cannot be verified from this deployment.';
+              }
+            }
+
             return (
               <div
                 key={p.id}
@@ -267,7 +284,7 @@ export const SettingsWorkspace: React.FC<SettingsWorkspaceProps> = ({ onNavigate
                     ? 'bg-primary/5 border-primary shadow-2xs'
                     : isConfigured
                       ? 'bg-surface-soft/40 border-hairline hover:border-primary/40 cursor-pointer'
-                      : 'bg-surface-soft/20 border-hairline opacity-60 cursor-not-allowed'
+                      : 'bg-surface-soft/20 border-hairline opacity-75 cursor-not-allowed'
                   }`}
               >
                 <div className="flex items-start justify-between gap-2">
@@ -282,26 +299,27 @@ export const SettingsWorkspace: React.FC<SettingsWorkspaceProps> = ({ onNavigate
                     />
                     <div>
                       <h3 className="text-sm font-semibold text-ink">{p.name}</h3>
-                      <p className="text-[11px] text-muted leading-tight mt-0.5">{p.details}</p>
+                      {p.model && <p className="text-[11px] font-mono text-muted mt-0.5">Model: {p.model}</p>}
                     </div>
                   </div>
+                  {isActive && (
+                    <span className="px-2 py-0.5 text-[10px] font-bold bg-primary/10 text-primary rounded-md border border-primary/20 shrink-0">
+                      Active
+                    </span>
+                  )}
                 </div>
+
+                {helperNote && (
+                  <p className="text-[11px] text-muted leading-snug bg-surface-card/60 p-2 rounded-lg border border-hairline/60">
+                    {helperNote}
+                  </p>
+                )}
 
                 <div className="flex items-center justify-between pt-2 border-t border-hairline text-[11px]">
                   <div className="flex items-center gap-1.5 font-medium">
-                    <span
-                      className={`w-2 h-2 rounded-full ${isConfigured ? 'bg-emerald-500 animate-pulse' : 'bg-red-400'
-                        }`}
-                    />
-                    <span className={isConfigured ? 'text-emerald-600 dark:text-emerald-400 font-semibold' : 'text-muted'}>
-                      {isConfigured ? 'Connected & Ready' : 'Not configured'}
-                    </span>
+                    <span className={`w-2 h-2 rounded-full ${dotColor}`} />
+                    <span className={`font-semibold ${statusColor}`}>{statusText}</span>
                   </div>
-                  {isActive && (
-                    <span className="px-2 py-0.5 text-[10px] font-bold bg-primary/10 text-primary rounded-md border border-primary/20">
-                      Active Choice
-                    </span>
-                  )}
                 </div>
               </div>
             );
@@ -309,7 +327,21 @@ export const SettingsWorkspace: React.FC<SettingsWorkspaceProps> = ({ onNavigate
         </div>
 
         {/* Custom Groq API Key Input Form */}
-        <div className="pt-2 border-t border-hairline">
+        <div className="pt-4 border-t border-hairline space-y-2">
+          <div className="flex items-center justify-between">
+            <label htmlFor="groq_key_input" className="block text-xs font-semibold text-ink">
+              Configure Personal Groq API Key (Optional)
+            </label>
+            {providers.find(p => p.id === 'groq')?.key_source === 'user' && (
+              <span className="text-[11px] font-medium text-emerald-600 dark:text-emerald-400 flex items-center gap-1">
+                <CheckCircle2 className="w-3.5 h-3.5" />
+                <span>Your personal API key is configured</span>
+              </span>
+            )}
+          </div>
+          <p className="text-xs text-muted leading-relaxed">
+            InsightIQ uses its default API access when available. You can add your own Groq API key for independent access.
+          </p>
           <form
             onSubmit={async (e) => {
               e.preventDefault();
@@ -327,24 +359,21 @@ export const SettingsWorkspace: React.FC<SettingsWorkspaceProps> = ({ onNavigate
                 setIsUpdatingProvider(false);
               }
             }}
-            className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2 pt-2"
+            className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2 pt-1"
           >
             <div className="flex-1">
-              <label htmlFor="groq_key_input" className="block text-[11px] font-medium text-muted mb-1">
-                Configure Custom Groq API Key
-              </label>
               <input
                 id="groq_key_input"
                 name="groq_key_input"
                 type="password"
                 placeholder="gsk_..."
-                className="w-full px-3 py-1.5 rounded-lg border border-hairline bg-surface-soft text-xs text-ink placeholder:text-muted focus:outline-none focus:border-primary"
+                className="w-full px-3 py-2 rounded-xl border border-hairline bg-surface-soft text-xs text-ink placeholder:text-muted focus:outline-none focus:border-primary"
               />
             </div>
             <button
               type="submit"
               disabled={isUpdatingProvider}
-              className="sm:self-end px-3 py-1.5 rounded-lg bg-primary text-on-primary font-semibold text-xs hover:bg-primary-active transition-colors cursor-pointer shrink-0 disabled:opacity-50"
+              className="px-4 py-2 rounded-xl bg-primary text-on-primary font-semibold text-xs hover:bg-primary-hover transition-colors cursor-pointer shrink-0 disabled:opacity-50 shadow-xs"
             >
               Save Key & Activate
             </button>

@@ -262,10 +262,34 @@ export const DataChatWorkspace: React.FC<DataChatWorkspaceProps> = ({ onNavigate
         setConversationId(res.conversation_id);
       }
 
-      if (res.status === 'ollama_unavailable' || res.status === 'groq_unavailable') {
+      if (
+        res.status === 'groq_default_limit_reached' ||
+        res.status === 'groq_user_key_limit_reached' ||
+        res.status === 'groq_invalid_key' ||
+        res.status === 'ollama_unavailable' ||
+        res.status === 'groq_unavailable' ||
+        res.status === 'ollama_model_missing'
+      ) {
+        let titleMsg = `${providerDisplayName} Assistant Unavailable`;
+        let guidanceText = res.response_text || `Please verify provider configuration in Settings.`;
+
+        if (res.status === 'groq_default_limit_reached') {
+          titleMsg = 'Default API limit reached';
+          guidanceText = "InsightIQ's default Groq API access is currently unavailable due to its usage limit. Add your own Groq API key in Settings to continue using Groq Cloud.";
+        } else if (res.status === 'groq_user_key_limit_reached') {
+          titleMsg = 'Personal API key limit reached';
+          guidanceText = 'Your personal Groq API key has reached its usage limit. Please check your Groq account quota or update your key in Settings.';
+        } else if (res.status === 'groq_invalid_key') {
+          titleMsg = 'Invalid Groq API key';
+          guidanceText = 'The Groq API key provided is invalid. Please update your key in Settings.';
+        } else if (res.status === 'ollama_model_missing') {
+          titleMsg = 'Required Ollama model missing';
+          guidanceText = 'The required Ollama model is not installed on this computer.';
+        }
+
         setError({
-          message: `${providerDisplayName} assistant is currently unavailable.`,
-          guidance: res.response_text || `Please ensure ${providerDisplayName} is properly configured on the server.`,
+          message: titleMsg,
+          guidance: guidanceText,
         });
         setMessages((prev) => prev.filter((msg) => msg.id !== aiMsgId));
         return;

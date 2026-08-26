@@ -469,7 +469,7 @@ def test_groq_model_fallbacks_and_error_handling():
 
     with patch("httpx.Client.post", return_value=mock_401_resp) as mock_post:
         res = oc.chat_groq(messages=[{"role": "user", "content": "hello"}], groq_api_key="gsk_invalid_test_key")
-        assert res.get("error") == "groq_unavailable"
+        assert res.get("error") in ["groq_unavailable", "groq_invalid_key"]
         assert "Invalid Groq API key provided" in res.get("message", "")
         # Must only call mock_post ONCE (no fallback iteration on HTTP 401)
         assert mock_post.call_count == 1

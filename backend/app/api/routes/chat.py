@@ -341,7 +341,7 @@ async def chat_with_dataset(
         )
 
         err_type = res.get("error")
-        if err_type in ["ollama_unavailable", "groq_unavailable"]:
+        if err_type:
             return ChatResponse(
                 conversation_id=cid,
                 response_text=res.get("message", f"AI assistant ({active_provider}) is currently unavailable."),

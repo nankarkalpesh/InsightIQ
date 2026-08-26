@@ -991,12 +991,16 @@ export interface LLMProviderItem {
   name: string;
   configured: boolean;
   status: string;
+  key_source?: 'user' | 'default' | 'none';
+  model?: string;
   details: string;
 }
 
 export interface LLMProviderSettingsResponse {
   active_provider: string;
   providers: LLMProviderItem[];
+  has_custom_groq_key?: boolean;
+  groq_key_source?: 'user' | 'default' | 'none';
 }
 
 export async function fetchLLMProviderSettings(): Promise<LLMProviderSettingsResponse> {

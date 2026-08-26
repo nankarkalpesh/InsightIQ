@@ -137,27 +137,29 @@ def get_guest_llm_provider(session_id: Optional[str] = None) -> Optional[str]:
     """Retrieve stored guest LLM provider preference for a session ID."""
     if session_id and session_id in _guest_llm_preferences:
         return _guest_llm_preferences[session_id]
-    return _guest_llm_preferences.get("default")
+    return None if session_id else _guest_llm_preferences.get("default")
 
 
 def set_guest_llm_provider(provider: str, session_id: Optional[str] = None) -> None:
-    """Set stored guest LLM provider preference."""
+    """Set stored guest LLM provider preference for a specific session ID or default."""
     if session_id:
         _guest_llm_preferences[session_id] = provider
-    _guest_llm_preferences["default"] = provider
+    else:
+        _guest_llm_preferences["default"] = provider
 
 
 def get_guest_groq_api_key(session_id: Optional[str] = None) -> Optional[str]:
-    """Retrieve stored guest Groq API key."""
+    """Retrieve stored guest Groq API key for a specific session ID."""
     if session_id and session_id in _guest_groq_api_keys:
         return _guest_groq_api_keys[session_id]
-    return _guest_groq_api_keys.get("default")
+    return None if session_id else _guest_groq_api_keys.get("default")
 
 
 def set_guest_groq_api_key(api_key: str, session_id: Optional[str] = None) -> None:
-    """Set stored guest Groq API key."""
+    """Set stored guest Groq API key for a specific session ID or default."""
     if session_id:
         _guest_groq_api_keys[session_id] = api_key
-    _guest_groq_api_keys["default"] = api_key
+    else:
+        _guest_groq_api_keys["default"] = api_key
 
 
