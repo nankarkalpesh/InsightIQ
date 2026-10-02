@@ -7,11 +7,26 @@ logger = logging.getLogger(__name__)
 
 BASE_DIR = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-DATABASE_URL = os.getenv("DATABASE_URL")
-if DATABASE_URL and DATABASE_URL.strip():
-    DATABASE_URL = DATABASE_URL.strip()
-    if DATABASE_URL.startswith("postgres://"):
-        DATABASE_URL = DATABASE_URL.replace("postgres://", "postgresql://", 1)
+def normalize_database_url(url: str | None) -> str:
+    """
+    Normalize DATABASE_URL for SQLAlchemy 2.0 with Psycopg 3 compatibility.
+    - Converts postgres:// to postgresql+psycopg://
+    - Converts standard postgresql:// to postgresql+psycopg:// (avoiding default psycopg2 fallback)
+    - Preserves explicit drivers like postgresql+psycopg:// or postgresql+psycopg2://
+    """
+    if not url or not url.strip():
+        return ""
+    cleaned = url.strip()
+    if cleaned.startswith("postgres://"):
+        return cleaned.replace("postgres://", "postgresql+psycopg://", 1)
+    if cleaned.startswith("postgresql://"):
+        return cleaned.replace("postgresql://", "postgresql+psycopg://", 1)
+    return cleaned
+
+
+raw_db_url = os.getenv("DATABASE_URL")
+if raw_db_url and raw_db_url.strip():
+    DATABASE_URL = normalize_database_url(raw_db_url)
 else:
     db_path_env = os.getenv("DB_PATH")
     if db_path_env and db_path_env.strip():
@@ -59,7 +74,12 @@ def get_db():
 def init_db():
     """Initialize database tables and run column migrations if needed."""
     from app.models import db_models  # noqa
-    Base.metadata.create_all(bind=engine)
+    try:
+        Base.metadata.create_all(bind=engine)
+    except Exception as e:
+        safe_url = engine.url.render_as_string(hide_password=True) if hasattr(engine, "url") else "unknown"
+        logger.error(f"Database schema initialization failed for '{safe_url}': {e}")
+        raise
 
     # Database migration: check if columns exist in users and datasets tables
     try:

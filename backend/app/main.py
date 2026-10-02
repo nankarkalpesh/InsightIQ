@@ -25,7 +25,7 @@ from app.api.routes.auth import router as auth_router
 from app.api.routes.user import router as user_router
 from app.api.routes.settings import router as settings_router
 
-# Initialize SQLite database schema
+# Initialize database schema (fail-fast if database configuration or connectivity fails)
 init_db()
 
 app = FastAPI(
@@ -43,6 +43,7 @@ allowed_origins = [
     "http://127.0.0.1:5174",
     "http://localhost:3000",
     "http://127.0.0.1:3000",
+    "https://insightiq-analytics.vercel.app",
 ]
 if cors_env and cors_env != "*":
     for origin in cors_env.split(","):
@@ -78,6 +79,16 @@ app.include_router(settings_router, prefix="/api")
 app.include_router(upload_router, prefix="/api")
 app.include_router(dataset_router, prefix="/api")
 app.include_router(chat_router, prefix="/api")
+
+
+@app.get("/")
+def root():
+    return {"message": "InsightIQ backend is running"}
+
+
+@app.get("/health")
+def health():
+    return {"status": "ok"}
 
 
 @app.get("/api/health")
